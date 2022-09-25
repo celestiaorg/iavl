@@ -312,6 +312,11 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			return nil, treeEnd, errors.Wrap(err, "could not get right node by hash")
 		}
 	}
+	rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
+	if rootErr != nil {
+		return nil, treeEnd, errors.Wrap(err, "could not set root of deep subtree")
+	}
+	deepsubtree.ImmutableTree.root = rootNode
 	if err != nil {
 		return nil, treeEnd, errors.Wrap(err, "root COMPUTEHASH call")
 	} else if !done {

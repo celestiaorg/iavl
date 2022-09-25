@@ -175,18 +175,18 @@ func (proof *RangeProof) VerifyAbsence(key []byte) error {
 }
 
 // Verify that proof is valid.
-func (proof *RangeProof) Verify(root []byte) error {
+func (proof *RangeProof) Verify(root []byte, deepsubtree *DeepSubTree) error {
 	if proof == nil {
 		return errors.Wrap(ErrInvalidProof, "proof is nil")
 	}
-	err := proof.verify(root)
+	err := proof.verify(root, deepsubtree)
 	return err
 }
 
-func (proof *RangeProof) verify(root []byte) (err error) {
+func (proof *RangeProof) verify(root []byte, deepsubtree *DeepSubTree) (err error) {
 	rootHash := proof.rootHash
 	if rootHash == nil {
-		derivedHash, err := proof.computeRootHash()
+		derivedHash, err := proof.computeRootHash(deepsubtree)
 		if err != nil {
 			return err
 		}
@@ -206,12 +206,12 @@ func (proof *RangeProof) ComputeRootHash() []byte {
 	if proof == nil {
 		return nil
 	}
-	rootHash, _ := proof.computeRootHash()
+	rootHash, _ := proof.computeRootHash(nil)
 	return rootHash
 }
 
-func (proof *RangeProof) computeRootHash() (rootHash []byte, err error) {
-	rootHash, treeEnd, err := proof._computeRootHash()
+func (proof *RangeProof) computeRootHash(deepsubtree *DeepSubTree) (rootHash []byte, err error) {
+	rootHash, treeEnd, err := proof._computeRootHash(deepsubtree)
 	if err == nil {
 		proof.rootHash = rootHash // memoize
 		proof.treeEnd = treeEnd   // memoize
@@ -219,7 +219,7 @@ func (proof *RangeProof) computeRootHash() (rootHash []byte, err error) {
 	return rootHash, err
 }
 
-func (proof *RangeProof) _computeRootHash() (rootHash []byte, treeEnd bool, err error) {
+func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []byte, treeEnd bool, err error) {
 	if len(proof.Leaves) == 0 {
 		return nil, false, errors.Wrap(ErrInvalidProof, "no leaves")
 	}
@@ -246,7 +246,7 @@ func (proof *RangeProof) _computeRootHash() (rootHash []byte, treeEnd bool, err 
 		hash, err = (pathWithLeaf{
 			Path: path,
 			Leaf: nleaf,
-		}).computeRootHash()
+		}).computeRootHash(deepsubtree)
 
 		if err != nil {
 			return nil, treeEnd, false, err

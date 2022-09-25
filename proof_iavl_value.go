@@ -93,7 +93,7 @@ func (op ValueOp) Run(args [][]byte) ([][]byte, error) {
 	// Compute the root hash and assume it is valid.
 	// The caller checks the ultimate root later.
 	root := op.Proof.ComputeRootHash()
-	err := op.Proof.Verify(root)
+	err := op.Proof.Verify(root, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "computing root hash")
 	}

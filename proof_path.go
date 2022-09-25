@@ -27,12 +27,12 @@ func (pwl pathWithLeaf) StringIndented(indent string) string {
 
 // `computeRootHash` computes the root hash with leaf node.
 // Does not verify the root hash.
-func (pwl pathWithLeaf) computeRootHash() ([]byte, error) {
+func (pwl pathWithLeaf) computeRootHash(deepsubtree *DeepSubTree) ([]byte, error) {
 	leafHash, err := pwl.Leaf.Hash()
 	if err != nil {
 		return nil, err
 	}
-	return pwl.Path.computeRootHash(leafHash)
+	return pwl.Path.computeRootHash(leafHash, deepsubtree)
 }
 
 //----------------------------------------
@@ -67,12 +67,17 @@ func (pl PathToLeaf) stringIndented(indent string) string {
 
 // `computeRootHash` computes the root hash assuming some leaf hash.
 // Does not verify the root hash.
-func (pl PathToLeaf) computeRootHash(leafHash []byte) ([]byte, error) {
+func (pl PathToLeaf) computeRootHash(leafHash []byte, deepsubtree *DeepSubTree) ([]byte, error) {
 	var err error
 	hash := leafHash
 	for i := len(pl) - 1; i >= 0; i-- {
 		pin := pl[i]
 		hash, err = pin.Hash(hash)
+		n := &Node{
+			leftHash:  pin.Left,
+			rightHash: pin.Right,
+		}
+		deepsubtree.ndb.SaveNode(n)
 		if err != nil {
 			return nil, err
 		}

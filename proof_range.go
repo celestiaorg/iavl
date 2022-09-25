@@ -232,12 +232,12 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 	// shared across recursive calls
 	leaves := proof.Leaves
 	innersq := proof.InnerNodes
-	var COMPUTEHASH func(path PathToLeaf, rightmost bool) (hash []byte, treeEnd bool, done bool, err error)
+	var COMPUTEHASH func(path PathToLeaf, rightmost bool, dst *DeepSubTree) (hash []byte, treeEnd bool, done bool, err error)
 
 	// rightmost: is the root a rightmost child of the tree?
 	// treeEnd: true iff the last leaf is the last item of the tree.
 	// Returns the (possibly intermediate, possibly root) hash.
-	COMPUTEHASH = func(path PathToLeaf, rightmost bool) (hash []byte, treeEnd bool, done bool, err error) {
+	COMPUTEHASH = func(path PathToLeaf, rightmost bool, dst *DeepSubTree) (hash []byte, treeEnd bool, done bool, err error) {
 		// Pop next leaf.
 		nleaf, rleaves := leaves[0], leaves[1:]
 		leaves = rleaves
@@ -246,7 +246,7 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 		hash, err = (pathWithLeaf{
 			Path: path,
 			Leaf: nleaf,
-		}).computeRootHash(deepsubtree)
+		}).computeRootHash(dst)
 
 		if err != nil {
 			return nil, treeEnd, false, err
@@ -297,7 +297,21 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 
 	// Verify!
 	path := proof.LeftPath
-	rootHash, treeEnd, done, err := COMPUTEHASH(path, true)
+	rootHash, treeEnd, done, err := COMPUTEHASH(path, true, deepsubtree)
+	nodes, traverseErr := deepsubtree.ndb.nodes()
+	if traverseErr != nil {
+		return nil, treeEnd, errors.Wrap(traverseErr, "could not traverse nodedb")
+	}
+	for _, node := range nodes {
+		node.leftNode, err = deepsubtree.ndb.GetNode(node.leftHash)
+		if err != nil {
+			return nil, treeEnd, errors.Wrap(err, "could not get left node by hash")
+		}
+		node.rightNode, err = deepsubtree.ndb.GetNode(node.rightHash)
+		if err != nil {
+			return nil, treeEnd, errors.Wrap(err, "could not get right node by hash")
+		}
+	}
 	if err != nil {
 		return nil, treeEnd, errors.Wrap(err, "root COMPUTEHASH call")
 	} else if !done {

@@ -74,6 +74,9 @@ func (pl PathToLeaf) computeRootHash(leafHash []byte, deepsubtree *DeepSubTree) 
 		pin := pl[i]
 		hash, err = pin.Hash(hash)
 		n := &Node{
+			hash:      hash,
+			size:      pin.Size,
+			version:   pin.Version,
 			leftHash:  pin.Left,
 			rightHash: pin.Right,
 		}

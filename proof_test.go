@@ -235,6 +235,10 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	printNode(tree.ndb, tree.root, 0)
 	fmt.Println("PRINT TREE END")
 
+	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+	require.NoError(err)
+	dst := DeepSubTree{mutableTree}
+
 	// valid proof for real keys
 	for _, key := range allkeys {
 		proof, keys, values, err := tree.getRangeProof(key, nil, 2)
@@ -245,16 +249,21 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 			append([]byte("value_for_"), key...),
 			values[0],
 		)
-		mutableTree, err := NewMutableTree(db.NewMemDB(), 0, false)
-		require.NoError(err)
-		dst := DeepSubTree{mutableTree}
 		require.Nil(proof.Verify(root, &dst))
-		fmt.Println("PRINT DST TREE")
-		printNode(dst.ndb, dst.ImmutableTree.root, 0)
-		fmt.Println("PRINT DST TREE END")
 		require.Equal(1, len(keys), proof.String())
 		require.Equal(1, len(values), proof.String())
 	}
+
+	// Check root hashes are equal
+	require.Equal(dst.root.hash, tree.root.hash)
+	nodes, err := dst.ndb.nodes()
+	require.Nil(err)
+	for _, node := range nodes {
+		print(node)
+	}
+	// fmt.Println("PRINT DST TREE")
+	// printNode(dst.ndb, dst.ImmutableTree.root, 0)
+	// fmt.Println("PRINT DST TREE END")
 }
 
 func encodeProof(proof *RangeProof) ([]byte, error) {

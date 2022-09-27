@@ -256,13 +256,6 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 
 	// Check root hashes are equal
 	require.Equal(dst.root.hash, tree.root.hash)
-	// nodes, err := dst.ndb.nodes()
-	// require.Nil(err)
-	// for _, node := range nodes {
-	// 	pnode, _ := dst.ndb.GetNode(node.hash)
-	// 	print(pnode.hash)
-	// 	print("\n")
-	// }
 	fmt.Println("PRINT DST TREE")
 	printNode(dst.ndb, dst.ImmutableTree.root, 0)
 	fmt.Println("PRINT DST TREE END")

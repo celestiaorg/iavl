@@ -221,7 +221,7 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 
 	// insert key/value pairs in tree
 	allkeys := make([][]byte, 10)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < len(allkeys); i++ {
 		key := fmt.Sprint(i)
 		value := "value_for_" + key
 		tree.Set([]byte(key), []byte(value))
@@ -232,7 +232,7 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	require.NoError(err)
 
 	fmt.Println("PRINT TREE")
-	printNode(tree.ndb, tree.root, 0)
+	_ = printNode(tree.ndb, tree.root, 0)
 	fmt.Println("PRINT TREE END")
 
 	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
@@ -242,14 +242,14 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	// valid proof for real keys
 	for _, key := range allkeys {
 		proof, keys, values, err := tree.getRangeProof(key, nil, 2)
-		require.Nil(err)
+		require.NoError(err)
 
 		require.Equal(key, keys[0])
 		require.Equal(
 			append([]byte("value_for_"), key...),
 			values[0],
 		)
-		require.Nil(proof.Verify(root, &dst))
+		require.NoError(proof.Verify(root, &dst))
 		require.Equal(1, len(keys), proof.String())
 		require.Equal(1, len(values), proof.String())
 	}
@@ -257,7 +257,7 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	// Check root hashes are equal
 	require.Equal(dst.root.hash, tree.root.hash)
 	fmt.Println("PRINT DST TREE")
-	printNode(dst.ndb, dst.ImmutableTree.root, 0)
+	_ = printNode(dst.ndb, dst.ImmutableTree.root, 0)
 	fmt.Println("PRINT DST TREE END")
 }
 

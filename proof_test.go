@@ -32,7 +32,7 @@ func TestTreeGetWithProof(t *testing.T) {
 	require.NotNil(proof)
 	err = proof.VerifyItem(key, val)
 	require.Error(err, "%+v", err) // Verifying item before calling Verify(root)
-	err = proof.Verify(root)
+	err = proof.Verify(root, nil)
 	require.NoError(err, "%+v", err)
 	err = proof.VerifyItem(key, val)
 	require.NoError(err, "%+v", err)
@@ -44,7 +44,7 @@ func TestTreeGetWithProof(t *testing.T) {
 	require.NotNil(proof)
 	err = proof.VerifyAbsence(key)
 	require.Error(err, "%+v", err) // Verifying absence before calling Verify(root)
-	err = proof.Verify(root)
+	err = proof.Verify(root, nil)
 	require.NoError(err, "%+v", err)
 	err = proof.VerifyAbsence(key)
 	require.NoError(err, "%+v", err)
@@ -59,7 +59,7 @@ func TestTreeKeyExistsProof(t *testing.T) {
 	// should get false for proof with nil root
 	proof, keys, values, err := tree.getRangeProof([]byte("foo"), nil, 1)
 	assert.Nil(t, proof)
-	assert.Error(t, proof.Verify(root))
+	assert.Error(t, proof.Verify(root, nil))
 	assert.Nil(t, keys)
 	assert.Nil(t, values)
 	assert.NoError(t, err)
@@ -79,13 +79,13 @@ func TestTreeKeyExistsProof(t *testing.T) {
 	// query random key fails
 	proof, _, _, err = tree.getRangeProof([]byte("foo"), nil, 2)
 	assert.Nil(t, err)
-	assert.Nil(t, proof.Verify(root))
+	assert.Nil(t, proof.Verify(root, nil))
 	assert.Nil(t, proof.VerifyAbsence([]byte("foo")), proof.String())
 
 	// query min key fails
 	proof, _, _, err = tree.getRangeProof([]byte{0x00}, []byte{0x01}, 2)
 	assert.Nil(t, err)
-	assert.Nil(t, proof.Verify(root))
+	assert.Nil(t, proof.Verify(root, nil))
 	assert.Nil(t, proof.VerifyAbsence([]byte{0x00}))
 
 	// valid proof for real keys
@@ -99,7 +99,7 @@ func TestTreeKeyExistsProof(t *testing.T) {
 			values[0],
 		)
 		require.Equal(t, key, keys[0])
-		require.Nil(t, proof.Verify(root))
+		require.Nil(t, proof.Verify(root, nil))
 		require.Nil(t, proof.VerifyAbsence(cpIncr(key)))
 		require.Equal(t, 1, len(keys), proof.String())
 		require.Equal(t, 1, len(values), proof.String())
@@ -192,7 +192,7 @@ func TestTreeKeyInRangeProofs(t *testing.T) {
 			require.Equal(c.lidx, proof.LeftIndex())
 
 			// Verify that proof is valid.
-			err = proof.Verify(root)
+			err = proof.Verify(root, nil)
 			require.NoError(err, "%+v", err)
 			verifyProof(t, proof, root)
 
@@ -228,7 +228,7 @@ func decodeProof(bz []byte) (*RangeProof, error) {
 
 func verifyProof(t *testing.T, proof *RangeProof, root []byte) {
 	// Proof must verify.
-	require.NoError(t, proof.Verify(root))
+	require.NoError(t, proof.Verify(root, nil))
 
 	// Write/Read then verify.
 	proofBytes, err := encodeProof(proof)
@@ -250,7 +250,7 @@ func verifyProof(t *testing.T, proof *RangeProof, root []byte) {
 		}
 		// may be invalid... errors are okay
 		if err == nil {
-			assert.Errorf(t, badProof.Verify(root),
+			assert.Errorf(t, badProof.Verify(root, nil),
 				"Proof was still valid after a random mutation:\n%X\n%X",
 				proofBytes, badProofBytes)
 		}

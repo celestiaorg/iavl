@@ -48,7 +48,7 @@ func TestProofOp(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify that proof is valid.
-			err = proof.Verify(root)
+			err = proof.Verify(root, nil)
 			require.NoError(t, err)
 
 			// Encode and decode proof, either ValueOp or AbsentOp depending on key existence.
@@ -71,7 +71,7 @@ func TestProofOp(t *testing.T) {
 				d, e := ValueOpDecoder(proofOp)
 				require.NoError(t, e)
 				decoded := d.(ValueOp)
-				err = decoded.Proof.Verify(root)
+				err = decoded.Proof.Verify(root, nil)
 				require.NoError(t, err)
 				assert.Equal(t, valueOp, decoded)
 
@@ -91,7 +91,7 @@ func TestProofOp(t *testing.T) {
 				d, e := AbsenceOpDecoder(proofOp)
 				require.NoError(t, e)
 				decoded := d.(AbsenceOp)
-				err = decoded.Proof.Verify(root)
+				err = decoded.Proof.Verify(root, nil)
 				require.NoError(t, err)
 				assert.Equal(t, absenceOp, decoded)
 			}

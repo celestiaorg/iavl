@@ -534,7 +534,7 @@ func TestTreeProof(t *testing.T) {
 	value, proof, err := tree.GetWithProof([]byte("foo"))
 	assert.Nil(t, value)
 	assert.Nil(t, proof)
-	assert.Error(t, proof.Verify([]byte(nil)))
+	assert.Error(t, proof.Verify([]byte(nil), nil))
 	assert.NoError(t, err)
 
 	// insert lots of info and store the bytes
@@ -554,7 +554,7 @@ func TestTreeProof(t *testing.T) {
 	assert.NoError(t, err)
 	hash, err = tree.Hash()
 	assert.NoError(t, err)
-	assert.NoError(t, proof.Verify(hash))
+	assert.NoError(t, proof.Verify(hash, nil))
 	assert.NoError(t, proof.VerifyAbsence([]byte("foo")))
 
 	// valid proof for real keys
@@ -565,7 +565,7 @@ func TestTreeProof(t *testing.T) {
 		if assert.NoError(t, err) {
 			require.Nil(t, err, "Failed to read proof from bytes: %v", err)
 			assert.Equal(t, key, value)
-			err := proof.Verify(root)
+			err := proof.Verify(root, nil)
 			assert.NoError(t, err, "#### %v", proof.String())
 			err = proof.VerifyItem(key, key)
 			assert.NoError(t, err, "#### %v", proof.String())

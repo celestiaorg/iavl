@@ -277,7 +277,7 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			innersq = rinnersq
 
 			// Recursively verify inners against remaining leaves.
-			derivedRoot, treeEnd, done, err := COMPUTEHASH(inners, rightmost && rpath.isRightmost())
+			derivedRoot, treeEnd, done, err := COMPUTEHASH(inners, rightmost && rpath.isRightmost(), dst)
 			if err != nil {
 				return nil, treeEnd, false, errors.Wrap(err, "recursive COMPUTEHASH call")
 			}
@@ -298,25 +298,28 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 	// Verify!
 	path := proof.LeftPath
 	rootHash, treeEnd, done, err := COMPUTEHASH(path, true, deepsubtree)
-	nodes, traverseErr := deepsubtree.ndb.nodes()
-	if traverseErr != nil {
-		return nil, treeEnd, errors.Wrap(traverseErr, "could not traverse nodedb")
-	}
-	for _, node := range nodes {
-		node.leftNode, err = deepsubtree.ndb.GetNode(node.leftHash)
-		if err != nil {
-			return nil, treeEnd, errors.Wrap(err, "could not get left node by hash")
+
+	if deepsubtree != nil {
+		nodes, traverseErr := deepsubtree.ndb.nodes()
+		if traverseErr != nil {
+			return nil, treeEnd, errors.Wrap(traverseErr, "could not traverse nodedb")
 		}
-		node.rightNode, err = deepsubtree.ndb.GetNode(node.rightHash)
-		if err != nil {
-			return nil, treeEnd, errors.Wrap(err, "could not get right node by hash")
+		for _, node := range nodes {
+			node.leftNode, err = deepsubtree.ndb.GetNode(node.leftHash)
+			if err != nil {
+				return nil, treeEnd, errors.Wrap(err, "could not get left node by hash")
+			}
+			node.rightNode, err = deepsubtree.ndb.GetNode(node.rightHash)
+			if err != nil {
+				return nil, treeEnd, errors.Wrap(err, "could not get right node by hash")
+			}
 		}
+		rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
+		if rootErr != nil {
+			return nil, treeEnd, errors.Wrap(err, "could not set root of deep subtree")
+		}
+		deepsubtree.ImmutableTree.root = rootNode
 	}
-	rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
-	if rootErr != nil {
-		return nil, treeEnd, errors.Wrap(err, "could not set root of deep subtree")
-	}
-	deepsubtree.ImmutableTree.root = rootNode
 	if err != nil {
 		return nil, treeEnd, errors.Wrap(err, "root COMPUTEHASH call")
 	} else if !done {

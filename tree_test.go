@@ -1219,35 +1219,35 @@ func TestVersionedTreeProofs(t *testing.T) {
 	val, proof, err := tree.GetVersionedWithProof([]byte("k2"), 1)
 	require.NoError(err)
 	require.EqualValues(val, []byte("v1"))
-	require.NoError(proof.Verify(root1), proof.String())
+	require.NoError(proof.Verify(root1, nil), proof.String())
 	require.NoError(proof.VerifyItem([]byte("k2"), val))
 
 	val, proof, err = tree.GetVersionedWithProof([]byte("k4"), 1)
 	require.NoError(err)
 	require.Nil(val)
-	require.NoError(proof.Verify(root1))
+	require.NoError(proof.Verify(root1, nil))
 	require.NoError(proof.VerifyAbsence([]byte("k4")))
 
 	val, proof, err = tree.GetVersionedWithProof([]byte("k2"), 2)
 	require.NoError(err)
 	require.EqualValues(val, []byte("v2"))
-	require.NoError(proof.Verify(root2), proof.String())
+	require.NoError(proof.Verify(root2, nil), proof.String())
 	require.NoError(proof.VerifyItem([]byte("k2"), val))
 
 	val, proof, err = tree.GetVersionedWithProof([]byte("k1"), 2)
 	require.NoError(err)
 	require.EqualValues(val, []byte("v1"))
-	require.NoError(proof.Verify(root2))
+	require.NoError(proof.Verify(root2, nil))
 	require.NoError(proof.VerifyItem([]byte("k1"), val))
 
 	val, proof, err = tree.GetVersionedWithProof([]byte("k2"), 3)
 
 	require.NoError(err)
 	require.Nil(val)
-	require.NoError(proof.Verify(root3))
+	require.NoError(proof.Verify(root3, nil))
 	require.NoError(proof.VerifyAbsence([]byte("k2")))
-	require.Error(proof.Verify(root1))
-	require.Error(proof.Verify(root2))
+	require.Error(proof.Verify(root1, nil))
+	require.Error(proof.Verify(root2, nil))
 }
 
 func TestOrphans(t *testing.T) {
@@ -1312,7 +1312,7 @@ func TestVersionedTreeHash(t *testing.T) {
 	val, proof, err := tree.GetVersionedWithProof([]byte("I"), 2)
 	require.NoError(err)
 	require.EqualValues([]byte("F"), val)
-	require.NoError(proof.Verify(hash2))
+	require.NoError(proof.Verify(hash2, nil))
 	require.NoError(proof.VerifyItem([]byte("I"), val))
 }
 

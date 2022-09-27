@@ -305,14 +305,20 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			return nil, treeEnd, errors.Wrap(traverseErr, "could not traverse nodedb")
 		}
 		for _, node := range nodes {
-			node.leftNode, err = deepsubtree.ndb.GetNode(node.leftHash)
-			if err != nil {
-				return nil, treeEnd, errors.Wrap(err, "could not get left node by hash")
+			pnode, _ := deepsubtree.ndb.GetNode(node.hash)
+			if pnode.leftHash != nil {
+				pnode.leftNode, err = deepsubtree.ndb.GetNode(node.leftHash)
+				if err != nil {
+					return nil, treeEnd, errors.Wrap(err, "could not get left node by hash")
+				}
 			}
-			node.rightNode, err = deepsubtree.ndb.GetNode(node.rightHash)
-			if err != nil {
-				return nil, treeEnd, errors.Wrap(err, "could not get right node by hash")
+			if pnode.rightHash != nil {
+				pnode.rightNode, err = deepsubtree.ndb.GetNode(node.rightHash)
+				if err != nil {
+					return nil, treeEnd, errors.Wrap(err, "could not get right node by hash")
+				}
 			}
+
 		}
 		rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
 		if rootErr != nil {

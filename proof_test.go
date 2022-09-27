@@ -260,6 +260,7 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	require.Nil(err)
 	for _, node := range nodes {
 		print(node)
+		print("\n")
 	}
 	// fmt.Println("PRINT DST TREE")
 	// printNode(dst.ndb, dst.ImmutableTree.root, 0)

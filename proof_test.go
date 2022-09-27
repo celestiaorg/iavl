@@ -3,9 +3,11 @@ package iavl
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
 	"testing"
 
+	db "github.com/cosmos/cosmos-db"
 	proto "github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -209,6 +211,49 @@ func TestTreeKeyInRangeProofs(t *testing.T) {
 			}
 		}
 
+	}
+}
+
+func TestDeepSubtreeVerifyProof(t *testing.T) {
+	tree, err := getTestTree(0)
+	require.NoError(t, err)
+	require := require.New(t)
+
+	// insert key/value pairs in tree
+	allkeys := make([][]byte, 10)
+	for i := 0; i < 10; i++ {
+		key := fmt.Sprint(i)
+		value := "value_for_" + key
+		tree.Set([]byte(key), []byte(value))
+		allkeys[i] = []byte(key)
+	}
+	sortByteSlices(allkeys) // Sort all keys
+	root, err := tree.WorkingHash()
+	require.NoError(err)
+
+	fmt.Println("PRINT TREE")
+	printNode(tree.ndb, tree.root, 0)
+	fmt.Println("PRINT TREE END")
+
+	// valid proof for real keys
+	for _, key := range allkeys {
+		proof, keys, values, err := tree.getRangeProof(key, nil, 2)
+		require.Nil(err)
+
+		require.Equal(key, keys[0])
+		require.Equal(
+			append([]byte("value_for_"), key...),
+			values[0],
+		)
+		mutableTree, err := NewMutableTree(db.NewMemDB(), 0, false)
+		require.NoError(err)
+		dst := DeepSubTree{mutableTree}
+		require.Nil(proof.Verify(root, &dst))
+		fmt.Println("PRINT DST TREE")
+		printNode(dst.ndb, dst.ImmutableTree.root, 0)
+		fmt.Println("PRINT DST TREE END")
+		require.Equal(1, len(keys), proof.String())
+		require.Equal(1, len(values), proof.String())
 	}
 }
 

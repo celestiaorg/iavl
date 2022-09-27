@@ -85,7 +85,10 @@ func (pl PathToLeaf) computeRootHash(leafHash []byte, deepsubtree *DeepSubTree) 
 				leftHash:  pin.Left,
 				rightHash: pin.Right,
 			}
-			deepsubtree.ndb.SaveNode(n)
+			err := deepsubtree.ndb.SaveNode(n)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return hash, nil

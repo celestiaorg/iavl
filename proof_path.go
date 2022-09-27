@@ -91,7 +91,10 @@ func (pl PathToLeaf) computeRootHash(leafHash []byte, deepsubtree *DeepSubTree) 
 			}
 		}
 	}
-	deepsubtree.SaveVersion()
+	_, _, err = deepsubtree.SaveVersion()
+	if err != nil {
+		return nil, err
+	}
 	return hash, nil
 }
 

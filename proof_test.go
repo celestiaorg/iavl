@@ -215,20 +215,22 @@ func TestTreeKeyInRangeProofs(t *testing.T) {
 }
 
 func TestDeepSubtreeVerifyProof(t *testing.T) {
-	tree, err := getTestTree(0)
+	tree, err := getTestTree(5)
 	require.NoError(t, err)
 	require := require.New(t)
 
+	tree.Set([]byte("e"), []byte{5})
+	tree.Set([]byte("d"), []byte{4})
+	tree.Set([]byte("c"), []byte{3})
+	tree.Set([]byte("b"), []byte{2})
+	tree.Set([]byte("a"), []byte{1})
+
 	// insert key/value pairs in tree
-	allkeys := make([][]byte, 10)
-	for i := 0; i < len(allkeys); i++ {
-		key := fmt.Sprint(i)
-		value := "value_for_" + key
-		tree.Set([]byte(key), []byte(value))
-		allkeys[i] = []byte(key)
+	allkeys := [][]byte{
+		[]byte("a"), []byte("b"), []byte("c"), []byte("d"), []byte("e"),
 	}
-	sortByteSlices(allkeys) // Sort all keys
-	root, err := tree.WorkingHash()
+
+	rootHash, _, err := tree.SaveVersion()
 	require.NoError(err)
 
 	fmt.Println("PRINT TREE")
@@ -245,11 +247,7 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 		require.NoError(err)
 
 		require.Equal(key, keys[0])
-		require.Equal(
-			append([]byte("value_for_"), key...),
-			values[0],
-		)
-		require.NoError(proof.Verify(root, &dst))
+		require.NoError(proof.Verify(rootHash, &dst))
 		require.Equal(1, len(keys), proof.String())
 		require.Equal(1, len(values), proof.String())
 	}

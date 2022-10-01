@@ -324,18 +324,22 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			return nil, treeEnd, errors.Wrap(traverseErr, "could not traverse nodedb")
 		}
 		for _, node := range nodes {
-			if len(node.leftHash) > 0 {
-				node.leftNode, _ = deepsubtree.ndb.GetNode(node.leftHash)
+			pnode, _ := deepsubtree.ndb.GetNode(node.hash)
+			if len(pnode.leftHash) > 0 && pnode.leftNode == nil {
+				pnode.leftNode, _ = deepsubtree.ndb.GetNode(pnode.leftHash)
 			}
-			if len(node.rightHash) > 0 {
-				node.rightNode, _ = deepsubtree.ndb.GetNode(node.rightHash)
+			if len(pnode.rightHash) > 0 && pnode.rightNode == nil {
+				pnode.rightNode, _ = deepsubtree.ndb.GetNode(pnode.rightHash)
 			}
 		}
-		rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
-		if rootErr != nil {
-			return nil, treeEnd, errors.Wrap(rootErr, "could not set root of deep subtree")
+		if deepsubtree.root == nil {
+			rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
+			if rootErr != nil {
+				return nil, treeEnd, errors.Wrap(rootErr, "could not set root of deep subtree")
+			}
+			deepsubtree.root = rootNode
 		}
-		deepsubtree.ImmutableTree.root = rootNode
+
 	}
 	if err != nil {
 		return nil, treeEnd, errors.Wrap(err, "root COMPUTEHASH call")

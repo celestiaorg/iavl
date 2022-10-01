@@ -37,6 +37,7 @@ message ProofInnerNode {
 // ProofLeafNode is a Protobuf representation of iavl.ProofInnerNode.
 message ProofLeafNode {
   bytes key        = 1;
-  bytes value_hash = 2;
-  int64 version    = 3;
+  bytes value      = 2;
+  bytes value_hash = 3;
+  int64 version    = 4;
 }

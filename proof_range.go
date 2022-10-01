@@ -244,6 +244,7 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			size:          1,
 			version:       leaf.Version,
 			key:           leaf.Key,
+			value:         leaf.Value,
 			hash:          leafHash,
 		}
 
@@ -452,6 +453,7 @@ func (t *ImmutableTree) getRangeProof(keyStart, keyEnd []byte, limit int) (proof
 	leaves := []ProofLeafNode{
 		{
 			Key:       left.key,
+			Value:     left.value,
 			ValueHash: h[:],
 			Version:   left.version,
 		},
@@ -513,6 +515,7 @@ func (t *ImmutableTree) getRangeProof(keyStart, keyEnd []byte, limit int) (proof
 				h := sha256.Sum256(node.value)
 				leaves = append(leaves, ProofLeafNode{
 					Key:       node.key,
+					Value:     node.value,
 					ValueHash: h[:],
 					Version:   node.version,
 				})

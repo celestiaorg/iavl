@@ -331,6 +331,7 @@ Similarly, `ProofLeafNode` contains a subset of leaf node data:
 ```go
 type ProofLeafNode struct {
 	Key       cmn.HexBytes `json:"key"`
+  Value     cmn.HexBytes `json:valueBytes`
 	ValueHash cmn.HexBytes `json:"value"`
 	Version   int64        `json:"version"`
 }

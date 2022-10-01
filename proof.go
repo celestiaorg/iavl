@@ -134,6 +134,7 @@ func proofInnerNodeFromProto(pbInner *iavlproto.ProofInnerNode) (ProofInnerNode,
 
 type ProofLeafNode struct {
 	Key       hexbytes.HexBytes `json:"key"`
+	Value     hexbytes.HexBytes `json:"valueBytes"`
 	ValueHash hexbytes.HexBytes `json:"value"`
 	Version   int64             `json:"version"`
 }
@@ -145,10 +146,12 @@ func (pln ProofLeafNode) String() string {
 func (pln ProofLeafNode) stringIndented(indent string) string {
 	return fmt.Sprintf(`ProofLeafNode{
 %s  Key:       %v
+%s  Value: 	   %v
 %s  ValueHash: %X
 %s  Version:   %v
 %s}`,
 		indent, pln.Key,
+		indent, pln.Value,
 		indent, pln.ValueHash,
 		indent, pln.Version,
 		indent)
@@ -189,6 +192,7 @@ func (pln ProofLeafNode) Hash() ([]byte, error) {
 func (pln ProofLeafNode) toProto() *iavlproto.ProofLeafNode {
 	return &iavlproto.ProofLeafNode{
 		Key:       pln.Key,
+		Value:     pln.Value,
 		ValueHash: pln.ValueHash,
 		Version:   pln.Version,
 	}
@@ -201,6 +205,7 @@ func proofLeafNodeFromProto(pbLeaf *iavlproto.ProofLeafNode) (ProofLeafNode, err
 	}
 	return ProofLeafNode{
 		Key:       pbLeaf.Key,
+		Value:     pbLeaf.Value,
 		ValueHash: pbLeaf.ValueHash,
 		Version:   pbLeaf.Version,
 	}, nil

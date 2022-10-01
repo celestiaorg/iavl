@@ -323,8 +323,6 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 		if traverseErr != nil {
 			return nil, treeEnd, errors.Wrap(traverseErr, "could not traverse nodedb")
 		}
-		rootNodeHash := []byte{}
-		highestHeight := int8(0)
 		for _, node := range nodes {
 			if len(node.leftHash) > 0 {
 				node.leftNode, _ = deepsubtree.ndb.GetNode(node.leftHash)
@@ -332,12 +330,8 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			if len(node.rightHash) > 0 {
 				node.rightNode, _ = deepsubtree.ndb.GetNode(node.rightHash)
 			}
-			if node.subtreeHeight > highestHeight {
-				highestHeight = node.subtreeHeight
-				rootNodeHash = node.hash
-			}
 		}
-		rootNode, rootErr := deepsubtree.ndb.GetNode(rootNodeHash)
+		rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
 		if rootErr != nil {
 			return nil, treeEnd, errors.Wrap(rootErr, "could not set root of deep subtree")
 		}

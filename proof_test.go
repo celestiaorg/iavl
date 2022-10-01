@@ -251,9 +251,9 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 		require.Equal(1, len(keys), proof.String())
 		require.Equal(1, len(values), proof.String())
 
-		// Prints the working deep subtree for keys added so far.
+		// Prints the working deep subtree for keys added so fa∂r.
 		fmt.Println("PRINT DST TREE")
-		_ = printNodeDeepSubtree(dst.ndb, dst.ImmutableTree.root, 0)
+		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
 		fmt.Println("PRINT DST TREE END")
 		fmt.Println()
 	}

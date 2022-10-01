@@ -330,6 +330,9 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			if len(pnode.rightHash) > 0 && pnode.rightNode == nil {
 				pnode.rightNode, _ = deepsubtree.ndb.GetNode(pnode.rightHash)
 			}
+			if pnode.leftNode != nil {
+				pnode.key = pnode.leftNode.getHighestKey()
+			}
 		}
 		if deepsubtree.root == nil {
 			rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)

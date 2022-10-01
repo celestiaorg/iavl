@@ -488,6 +488,26 @@ func (node *Node) getRightNode(t *ImmutableTree) (*Node, error) {
 	return rightNode, nil
 }
 
+// Returns the highest key in the node's subtree
+func (node *Node) getHighestKey() []byte {
+	if node.isLeaf() {
+		return node.key
+	}
+	highestKey := []byte{}
+	if node.rightNode != nil {
+		highestKey = node.rightNode.getHighestKey()
+	}
+	if node.leftNode != nil {
+		leftHighestKey := node.leftNode.getHighestKey()
+		if highestKey == nil {
+			highestKey = leftHighestKey
+		} else if string(leftHighestKey) > string(highestKey) {
+			highestKey = leftHighestKey
+		}
+	}
+	return highestKey
+}
+
 // NOTE: mutates height and size
 func (node *Node) calcHeightAndSize(t *ImmutableTree) error {
 	leftNode, err := node.getLeftNode(t)

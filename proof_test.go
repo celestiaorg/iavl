@@ -247,9 +247,7 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 		require.NoError(err)
 
 		require.Equal(key, keys[0])
-		err = proof.Verify(rootHash, &dst)
-		//require.NoError(err)
-		_ = err
+		require.NoError(proof.Verify(rootHash, &dst))
 		require.Equal(1, len(keys), proof.String())
 		require.Equal(1, len(values), proof.String())
 

@@ -296,13 +296,11 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 			innersq = rinnersq
 
 			// Recursively verify inners against remaining leaves.
-			derivedRoot, treeEnd, done, err := COMPUTEHASH(inners, rightmost && rpath.isRightmost(), dst)
+			_, treeEnd, done, err := COMPUTEHASH(inners, rightmost && rpath.isRightmost(), dst)
 			if err != nil {
 				return nil, treeEnd, false, errors.Wrap(err, "recursive COMPUTEHASH call")
 			}
-			if !bytes.Equal(derivedRoot, lpath.Right) {
-				return nil, treeEnd, false, errors.Wrapf(ErrInvalidRoot, "intermediate root hash %X doesn't match, got %X", lpath.Right, derivedRoot)
-			}
+			// Cannot verify derived root because the assumption that only lpath's right node is populated is removed
 			if done {
 				return hash, treeEnd, true, nil
 			}

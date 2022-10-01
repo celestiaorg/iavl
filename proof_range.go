@@ -234,6 +234,25 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 	innersq := proof.InnerNodes
 	var COMPUTEHASH func(path PathToLeaf, rightmost bool, dst *DeepSubTree) (hash []byte, treeEnd bool, done bool, err error)
 
+	for _, leaf := range leaves {
+		leafHash, err := leaf.Hash()
+		if err != nil {
+			return nil, treeEnd, err
+		}
+		n := &Node{
+			subtreeHeight: 0,
+			size:          1,
+			version:       leaf.Version,
+			key:           leaf.Key,
+			hash:          leafHash,
+		}
+
+		err = deepsubtree.ndb.SaveNode(n)
+		if err != nil {
+			return nil, treeEnd, err
+		}
+	}
+
 	// rightmost: is the root a rightmost child of the tree?
 	// treeEnd: true iff the last leaf is the last item of the tree.
 	// Returns the (possibly intermediate, possibly root) hash.
@@ -304,24 +323,21 @@ func (proof *RangeProof) _computeRootHash(deepsubtree *DeepSubTree) (rootHash []
 		if traverseErr != nil {
 			return nil, treeEnd, errors.Wrap(traverseErr, "could not traverse nodedb")
 		}
+		rootNodeHash := []byte{}
+		highestHeight := int8(0)
 		for _, node := range nodes {
-			var err error
-			pnode, _ := deepsubtree.ndb.GetNode(node.hash)
-			if len(pnode.leftHash) > 0 {
-				pnode.leftNode, err = deepsubtree.ndb.GetNode(pnode.leftHash)
-				if err != nil {
-					return nil, treeEnd, errors.Wrap(err, "could not get node for left hash")
-				}
+			if len(node.leftHash) > 0 {
+				node.leftNode, _ = deepsubtree.ndb.GetNode(node.leftHash)
 			}
-			if len(pnode.rightHash) > 0 {
-				pnode.rightNode, err = deepsubtree.ndb.GetNode(pnode.rightHash)
-				if err != nil {
-					return nil, treeEnd, errors.Wrap(err, "could not get node for right hash")
-				}
+			if len(node.rightHash) > 0 {
+				node.rightNode, _ = deepsubtree.ndb.GetNode(node.rightHash)
 			}
-
+			if node.subtreeHeight > highestHeight {
+				highestHeight = node.subtreeHeight
+				rootNodeHash = node.hash
+			}
 		}
-		rootNode, rootErr := deepsubtree.ndb.GetNode(rootHash)
+		rootNode, rootErr := deepsubtree.ndb.GetNode(rootNodeHash)
 		if rootErr != nil {
 			return nil, treeEnd, errors.Wrap(rootErr, "could not set root of deep subtree")
 		}
@@ -538,8 +554,9 @@ func (t *ImmutableTree) getRangeProof(keyStart, keyEnd []byte, limit int) (proof
 					Height:  node.subtreeHeight,
 					Size:    node.size,
 					Version: node.version,
-					Left:    nil,
-					Right:   node.rightHash,
+					// Need this information to know where we came from while constructing a DeepSubTree
+					Left:  node.leftHash,
+					Right: node.rightHash,
 				})
 			}
 			return false

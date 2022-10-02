@@ -556,9 +556,8 @@ func (t *ImmutableTree) getRangeProof(keyStart, keyEnd []byte, limit int) (proof
 					Height:  node.subtreeHeight,
 					Size:    node.size,
 					Version: node.version,
-					// Need this information to know where we came from while constructing a DeepSubTree
-					Left:  node.leftHash,
-					Right: node.rightHash,
+					Left:    nil,
+					Right:   node.rightHash,
 				})
 			}
 			return false

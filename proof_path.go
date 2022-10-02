@@ -70,6 +70,7 @@ func (pl PathToLeaf) stringIndented(indent string) string {
 func (pl PathToLeaf) computeRootHash(leafHash []byte, deepsubtree *DeepSubTree) ([]byte, error) {
 	var err error
 	hash := leafHash
+	lastHash := leafHash
 	for i := len(pl) - 1; i >= 0; i-- {
 		pin := pl[i]
 		hash, err = pin.Hash(hash)
@@ -88,6 +89,14 @@ func (pl PathToLeaf) computeRootHash(leafHash []byte, deepsubtree *DeepSubTree) 
 			if err != nil {
 				return nil, err
 			}
+			if len(pin.Left) == 0 {
+				n.leftHash = lastHash
+				n.rightHash = pin.Right
+			} else {
+				n.leftHash = pin.Left
+				n.rightHash = lastHash
+			}
+			lastHash = n.hash
 
 			has, err := deepsubtree.ndb.Has(n.hash)
 			if err != nil {

@@ -76,20 +76,11 @@ func (pin ProofInnerNode) Hash(childHash []byte) ([]byte, error) {
 		err = encoding.EncodeVarint(buf, pin.Version)
 	}
 
-	if len(pin.Left) == 0 {
-		if err == nil {
-			err = encoding.EncodeBytes(buf, childHash)
-		}
-		if err == nil {
-			err = encoding.EncodeBytes(buf, pin.Right)
-		}
-	} else {
-		if err == nil {
-			err = encoding.EncodeBytes(buf, pin.Left)
-		}
-		if err == nil {
-			err = encoding.EncodeBytes(buf, childHash)
-		}
+	if err == nil {
+		err = encoding.EncodeBytes(buf, pin.Left)
+	}
+	if err == nil {
+		err = encoding.EncodeBytes(buf, pin.Right)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash ProofInnerNode: %v", err)

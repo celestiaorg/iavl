@@ -100,7 +100,6 @@ func (pl PathToLeaf) computeRootHash(leafHash []byte, deepsubtree *DeepSubTree) 
 				}
 			}
 			if i == 0 {
-				hash = n.hash
 				_, _, err = deepsubtree.SaveVersion()
 				if err != nil {
 					return nil, err

@@ -243,12 +243,12 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 
 	// valid proof for real keys
 	for _, key := range allkeys {
-		proof, keys, values, err := tree.getRangeProof(key, nil, 2)
+		proof, keys, values, err := tree.getRangeProof(key, nil, 1)
 		require.NoError(err)
 
 		require.Equal(key, keys[0])
 		err = proof.Verify(rootHash, &dst)
-		//require.NoError(err)
+		require.NoError(err)
 		_ = err
 		require.Equal(1, len(keys), proof.String())
 		require.Equal(1, len(values), proof.String())
@@ -261,6 +261,59 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	}
 
 	// Check root hashes are equal
+	require.Equal(dst.root.hash, tree.root.hash)
+}
+
+func TestDeepSubtree(t *testing.T) {
+	tree, err := getTestTree(5)
+	require.NoError(t, err)
+	require := require.New(t)
+
+	tree.Set([]byte("e"), []byte{5})
+	tree.Set([]byte("d"), []byte{4})
+	tree.Set([]byte("c"), []byte{3})
+	tree.Set([]byte("b"), []byte{2})
+	tree.Set([]byte("a"), []byte{1})
+
+	rootHash, _, err := tree.SaveVersion()
+	require.NoError(err)
+
+	fmt.Println("PRINT TREE")
+	_ = printNode(tree.ndb, tree.root, 0)
+	fmt.Println("PRINT TREE END")
+
+	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+	require.NoError(err)
+	dst := DeepSubTree{mutableTree}
+
+	proof, _, _, err := tree.getRangeProof([]byte("a"), nil, 1)
+	require.NoError(err)
+	err = proof.Verify(rootHash, &dst)
+	require.NoError(err)
+
+	proof, _, _, err = tree.getRangeProof([]byte("b"), nil, 1)
+	require.NoError(err)
+	err = proof.Verify(rootHash, &dst)
+	require.NoError(err)
+
+	fmt.Println("PRINT DST TREE")
+	_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
+	fmt.Println("PRINT DST TREE END")
+	fmt.Println()
+
+	// Check root hashes are equal
+	require.Equal(dst.root.hash, tree.root.hash)
+
+	dst.Set([]byte("a"), []byte{10})
+	tree.Set([]byte("a"), []byte{10})
+	dst.Set([]byte("b"), []byte{20})
+	tree.Set([]byte("b"), []byte{20})
+
+	fmt.Println("PRINT DST TREE")
+	_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
+	fmt.Println("PRINT DST TREE END")
+	fmt.Println()
+
 	require.Equal(dst.root.hash, tree.root.hash)
 }
 

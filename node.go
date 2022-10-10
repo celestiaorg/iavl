@@ -499,13 +499,32 @@ func (node *Node) getHighestKey() []byte {
 	}
 	if node.leftNode != nil {
 		leftHighestKey := node.leftNode.getHighestKey()
-		if highestKey == nil {
+		if len(highestKey) == 0 {
 			highestKey = leftHighestKey
 		} else if string(leftHighestKey) > string(highestKey) {
 			highestKey = leftHighestKey
 		}
 	}
 	return highestKey
+}
+
+func (node *Node) getLowestKey() []byte {
+	if node.isLeaf() {
+		return node.key
+	}
+	lowestKey := []byte{}
+	if node.rightNode != nil {
+		lowestKey = node.rightNode.getLowestKey()
+	}
+	if node.leftNode != nil {
+		leftLowestKey := node.leftNode.getLowestKey()
+		if len(lowestKey) == 0 {
+			lowestKey = leftLowestKey
+		} else if string(leftLowestKey) < string(lowestKey) {
+			lowestKey = leftLowestKey
+		}
+	}
+	return lowestKey
 }
 
 // NOTE: mutates height and size

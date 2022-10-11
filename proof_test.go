@@ -305,9 +305,13 @@ func TestDeepSubtree(t *testing.T) {
 	require.Equal(dst.root.hash, tree.root.hash)
 
 	dst.Set([]byte("a"), []byte{10})
+	dst.SaveVersion()
 	tree.Set([]byte("a"), []byte{10})
+	tree.SaveVersion()
 	dst.Set([]byte("b"), []byte{20})
+	dst.SaveVersion()
 	tree.Set([]byte("b"), []byte{20})
+	tree.SaveVersion()
 
 	fmt.Println("PRINT DST TREE")
 	_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)

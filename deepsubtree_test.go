@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Tests creating a Deep Subtree step by step
+// as a full IAVL tree and checks if roots are equal
 func TestDeepSubtreeVerifyProof(t *testing.T) {
 	tree, err := getTestTree(5)
 	require.NoError(t, err)
@@ -53,6 +55,9 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	require.Equal(dst.root.hash, tree.root.hash)
 }
 
+// Tests updating the deepsubtree returns the
+// correct roots
+// Reference: https://ethresear.ch/t/data-availability-proof-friendly-state-tree-transitions/1453/23
 func TestDeepSubtree(t *testing.T) {
 	tree, err := getTestTree(5)
 	require.NoError(t, err)

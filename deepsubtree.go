@@ -93,6 +93,7 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 	if traverseErr != nil {
 		return fmt.Errorf("could not traverse nodedb: %w", traverseErr)
 	}
+	// Traverse through nodes and link them correctly
 	for _, node := range nodes {
 		pnode, _ := dst.ndb.GetNode(node.hash)
 		if len(pnode.leftHash) > 0 && pnode.leftNode == nil {
@@ -101,6 +102,11 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 		if len(pnode.rightHash) > 0 && pnode.rightNode == nil {
 			pnode.rightNode, _ = dst.ndb.GetNode(pnode.rightHash)
 		}
+	}
+	// Now that nodes are linked correctly, traverse again
+	// and set their keys correctly
+	for _, node := range nodes {
+		pnode, _ := dst.ndb.GetNode(node.hash)
 		if pnode.leftNode != nil {
 			pnode.key = pnode.leftNode.getHighestKey()
 		}
@@ -165,8 +171,12 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 		}
 	} else {
 		node.version = version
-		if bytes.Compare(key, node.key) < 0 || node.rightNode == nil {
-			leftNode := node.leftNode
+		leftNode, rightNode := node.leftNode, node.rightNode
+		if leftNode == nil && rightNode == nil {
+			return nil, false, fmt.Errorf("inner node must have at least one child node set")
+		}
+		compare := bytes.Compare(key, node.key)
+		if (leftNode != nil && compare < 0) || rightNode == nil {
 			node.leftNode, updated, err = dst.recursiveSet(leftNode, key, value)
 			if err != nil {
 				return nil, updated, err
@@ -174,8 +184,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 			node.leftNode.hash = nil
 			node.leftNode._hash()
 			node.leftHash = node.leftNode.hash
-		} else {
-			rightNode := node.rightNode
+		} else if (rightNode != nil && compare >= 0) || leftNode == nil {
 			node.rightNode, updated, err = dst.recursiveSet(rightNode, key, value)
 			if err != nil {
 				return nil, updated, err
@@ -183,6 +192,8 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 			node.rightNode.hash = nil
 			node.rightNode._hash()
 			node.rightHash = node.rightNode.hash
+		} else {
+			return nil, false, fmt.Errorf("inner node does not have key set correctly")
 		}
 		return node, updated, nil
 	}

@@ -5,10 +5,15 @@ import (
 	"fmt"
 )
 
+// Represents a IAVL Deep Subtree that can contain
+// a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
 }
 
+// Adds the node with the given key in the Deep Subtree
+// using the given full IAVL tree along everything along
+// the path of that node
 func (dst *DeepSubTree) AddPath(tree *ImmutableTree, key []byte) error {
 	path, val, err := tree.root.PathToLeaf(tree, key)
 	if err != nil {
@@ -23,6 +28,8 @@ func (dst *DeepSubTree) AddPath(tree *ImmutableTree, key []byte) error {
 	return nil
 }
 
+// Helper method to add given leaf node in the Deep Subtree
+// using the given PathToLeaf
 func (dst *DeepSubTree) addPath(pl PathToLeaf, leaf *Node) error {
 	hash, err := leaf._hash()
 	if err != nil {
@@ -78,6 +85,9 @@ func (dst *DeepSubTree) addPath(pl PathToLeaf, leaf *Node) error {
 	return nil
 }
 
+// Traverses in the nodes in the NodeDB in the Deep Subtree
+// and links them together using the populated left and right
+// hashes and sets the root to be the node with the given rootHash
 func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 	nodes, traverseErr := dst.ndb.nodes()
 	if traverseErr != nil {
@@ -110,6 +120,8 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 	return nil
 }
 
+// Set sets a key in the working tree with the given value.
+// Assumption: Node with given key already exists and is a leaf node.
 func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
 	if value == nil {
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
@@ -121,6 +133,8 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 	return updated, err
 }
 
+// Helper method for set to traverse and find the node with given key
+// recursively.
 func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	newSelf *Node, updated bool, err error,
 ) {
@@ -174,6 +188,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	}
 }
 
+// Prints a Deep Subtree recursively.
 func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
 	indentPrefix := ""
 	for i := 0; i < indent; i++ {
@@ -224,6 +239,7 @@ func (node *Node) getHighestKey() []byte {
 	return highestKey
 }
 
+// Returns the lowest key in the node's subtree
 func (node *Node) getLowestKey() []byte {
 	if node.isLeaf() {
 		return node.key

@@ -2,9 +2,10 @@ package iavl
 
 import (
 	"fmt"
+	"testing"
+
 	db "github.com/cosmos/cosmos-db"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestDeepSubtreeVerifyProof(t *testing.T) {
@@ -85,6 +86,7 @@ func TestDeepSubtree(t *testing.T) {
 	require.NoError(err)
 	err = dst.BuildTree(rootHash)
 	require.NoError(err)
+	dst.SaveVersion()
 
 	fmt.Println("PRINT DST TREE")
 	_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)

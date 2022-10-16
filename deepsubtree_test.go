@@ -10,24 +10,25 @@ import (
 
 // Tests creating a Deep Subtree step by step
 // as a full IAVL tree and checks if roots are equal
-func TestDeepSubtreeVerifyProof(t *testing.T) {
-	tree, err := getTestTree(5)
-	require.NoError(t, err)
+func TestDeepSubtreeStepByStep(t *testing.T) {
 	require := require.New(t)
+	getTree := func() *MutableTree {
+		tree, err := getTestTree(5)
+		require.NoError(err)
 
-	tree.Set([]byte("e"), []byte{5})
-	tree.Set([]byte("d"), []byte{4})
-	tree.Set([]byte("c"), []byte{3})
-	tree.Set([]byte("b"), []byte{2})
-	tree.Set([]byte("a"), []byte{1})
+		tree.Set([]byte("e"), []byte{5})
+		tree.Set([]byte("d"), []byte{4})
+		tree.Set([]byte("c"), []byte{3})
+		tree.Set([]byte("b"), []byte{2})
+		tree.Set([]byte("a"), []byte{1})
 
-	// insert key/value pairs in tree
-	allkeys := [][]byte{
-		[]byte("a"), []byte("b"), []byte("c"), []byte("d"), []byte("e"),
+		_, _, err = tree.SaveVersion()
+		require.NoError(err)
+		return tree
 	}
 
-	rootHash, _, err := tree.SaveVersion()
-	require.NoError(err)
+	tree := getTree()
+	rootHash := tree.root.hash
 
 	fmt.Println("PRINT TREE")
 	_ = printNode(tree.ndb, tree.root, 0)
@@ -37,13 +38,20 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 	require.NoError(err)
 	dst := DeepSubTree{mutableTree}
 
-	// valid proof for real keys
+	// insert key/value pairs in tree
+	allkeys := [][]byte{
+		[]byte("a"), []byte("b"), []byte("c"), []byte("d"), []byte("e"),
+	}
+
+	// Put all keys inside the tree one by one
+	// and print Deep Subtree at each step
 	for _, key := range allkeys {
 		err := dst.AddPath(tree.ImmutableTree, key)
 		require.NoError(err)
 
 		err = dst.BuildTree(rootHash)
 		require.NoError(err)
+
 		// Prints the working deep subtree for keys added so fa∂r.
 		fmt.Println("PRINT DST TREE")
 		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
@@ -58,7 +66,7 @@ func TestDeepSubtreeVerifyProof(t *testing.T) {
 // Tests updating the deepsubtree returns the
 // correct roots
 // Reference: https://ethresear.ch/t/data-availability-proof-friendly-state-tree-transitions/1453/23
-func TestDeepSubtree(t *testing.T) {
+func TestDeepSubtreeWithUpdates(t *testing.T) {
 	require := require.New(t)
 	getTree := func() *MutableTree {
 		tree, err := getTestTree(5)
@@ -110,6 +118,7 @@ func TestDeepSubtree(t *testing.T) {
 			tree.SaveVersion()
 		}
 
+		// Check root hashes are equal
 		require.Equal(dst.root.hash, tree.root.hash)
 	}
 }

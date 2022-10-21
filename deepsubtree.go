@@ -162,10 +162,10 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	version := dst.version + 1
 
 	if node.isLeaf() {
-		if bytes.Compare(key, node.key) == 0 {
-			return NewNode(key, value, version), true, nil
+		if !bytes.Equal(key, node.key) {
+			return nil, false, fmt.Errorf("adding new keys is not supported")
 		}
-		return nil, false, fmt.Errorf("adding new keys is not supported")
+		return NewNode(key, value, version), true, nil
 	} else {
 		node.version = version
 		leftNode, rightNode := node.leftNode, node.rightNode

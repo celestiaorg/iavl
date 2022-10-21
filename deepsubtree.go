@@ -12,7 +12,7 @@ type DeepSubTree struct {
 }
 
 // Adds the node with the given key in the Deep Subtree
-// using the given full IAVL tree along everything along
+// using the given full IAVL tree along with
 // the path of that node
 func (dst *DeepSubTree) AddPath(tree *ImmutableTree, key []byte) error {
 	path, val, err := tree.root.PathToLeaf(tree, key)
@@ -37,13 +37,16 @@ func (dst *DeepSubTree) addPath(pl PathToLeaf, leaf *Node) error {
 	}
 
 	n := NewNode(leaf.key, leaf.value, leaf.version)
-	n._hash()
+	prevHash, err := n._hash()
+	if err != nil {
+		return err
+	}
 	err = dst.ndb.SaveNode(n)
 	if err != nil {
 		return err
 	}
 
-	prevHash := n.hash
+	// Iterates from bottom most inner node to top
 	for i := len(pl) - 1; i >= 0; i-- {
 		pin := pl[i]
 		hash, err = pin.Hash(hash)
@@ -128,15 +131,27 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 
 // Set sets a key in the working tree with the given value.
 // Assumption: Node with given key already exists and is a leaf node.
+// Modified version of set taken from mutable_tree.go
 func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
 	if value == nil {
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
 	}
 
 	dst.root, updated, err = dst.recursiveSet(dst.root, key, value)
-	dst.root.hash = nil
-	dst.root._hash()
+	hashErr := recomputeHash(dst.root)
+	if hashErr != nil {
+		return updated, hashErr
+	}
 	return updated, err
+}
+
+func recomputeHash(node *Node) error {
+	node.hash = nil
+	_, err := node._hash()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Helper method for set to traverse and find the node with given key
@@ -147,28 +162,10 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	version := dst.version + 1
 
 	if node.isLeaf() {
-		switch bytes.Compare(key, node.key) {
-		case -1:
-			return &Node{
-				key:           node.key,
-				subtreeHeight: 1,
-				size:          2,
-				leftNode:      NewNode(key, value, version),
-				rightNode:     node,
-				version:       version,
-			}, false, nil
-		case 1:
-			return &Node{
-				key:           key,
-				subtreeHeight: 1,
-				size:          2,
-				leftNode:      node,
-				rightNode:     NewNode(key, value, version),
-				version:       version,
-			}, false, nil
-		default:
+		if bytes.Compare(key, node.key) == 0 {
 			return NewNode(key, value, version), true, nil
 		}
+		return nil, false, fmt.Errorf("adding new keys is not supported")
 	} else {
 		node.version = version
 		leftNode, rightNode := node.leftNode, node.rightNode
@@ -181,16 +178,20 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 			if err != nil {
 				return nil, updated, err
 			}
-			node.leftNode.hash = nil
-			node.leftNode._hash()
+			hashErr := recomputeHash(node.leftNode)
+			if hashErr != nil {
+				return nil, updated, hashErr
+			}
 			node.leftHash = node.leftNode.hash
 		} else if (rightNode != nil && compare >= 0) || leftNode == nil {
 			node.rightNode, updated, err = dst.recursiveSet(rightNode, key, value)
 			if err != nil {
 				return nil, updated, err
 			}
-			node.rightNode.hash = nil
-			node.rightNode._hash()
+			hashErr := recomputeHash(node.rightNode)
+			if hashErr != nil {
+				return nil, updated, hashErr
+			}
 			node.rightHash = node.rightNode.hash
 		} else {
 			return nil, false, fmt.Errorf("inner node does not have key set correctly")
@@ -199,7 +200,9 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	}
 }
 
+// nolint: unused
 // Prints a Deep Subtree recursively.
+// Modified version of printNode from util.go
 func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
 	indentPrefix := ""
 	for i := 0; i < indent; i++ {
@@ -211,7 +214,10 @@ func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
 		return nil
 	}
 	if node.rightNode != nil {
-		dst.printNodeDeepSubtree(node.rightNode, indent+1)
+		err := dst.printNodeDeepSubtree(node.rightNode, indent+1)
+		if err != nil {
+			return err
+		}
 	}
 
 	hash, err := node._hash()
@@ -225,7 +231,10 @@ func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
 	}
 
 	if node.leftNode != nil {
-		dst.printNodeDeepSubtree(node.leftNode, indent+1)
+		err := dst.printNodeDeepSubtree(node.leftNode, indent+1)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

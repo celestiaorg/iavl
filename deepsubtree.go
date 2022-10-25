@@ -138,11 +138,14 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 	}
 
 	dst.root, updated, err = dst.recursiveSet(dst.root, key, value)
+	if err != nil {
+		return updated, err
+	}
 	hashErr := recomputeHash(dst.root)
 	if hashErr != nil {
 		return updated, hashErr
 	}
-	return updated, err
+	return updated, nil
 }
 
 func recomputeHash(node *Node) error {

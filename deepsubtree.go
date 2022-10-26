@@ -177,7 +177,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 		return nil, false, fmt.Errorf("inner node must have at least one child node set")
 	}
 	compare := bytes.Compare(key, node.key)
-	if (leftNode != nil && compare < 0) || rightNode == nil {
+	if leftNode != nil && (compare < 0 || rightNode == nil) {
 		node.leftNode, updated, err = dst.recursiveSet(leftNode, key, value)
 		if err != nil {
 			return nil, updated, err
@@ -187,7 +187,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 			return nil, updated, hashErr
 		}
 		node.leftHash = node.leftNode.hash
-	} else if (rightNode != nil && compare >= 0) || leftNode == nil {
+	} else if rightNode != nil && (compare >= 0 || leftNode == nil) {
 		node.rightNode, updated, err = dst.recursiveSet(rightNode, key, value)
 		if err != nil {
 			return nil, updated, err

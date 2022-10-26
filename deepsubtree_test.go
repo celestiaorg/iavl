@@ -135,7 +135,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	fmt.Println("PRINT TREE END")
 
 	subsetKeys := [][]byte{
-		[]byte("b"),
+		[]byte("a"), []byte("b"),
 	}
 	rootHash := tree.root.hash
 	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
@@ -153,35 +153,31 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	// Add exclusion proof for `c`
 	keyToAdd := []byte("c")
 	valueToAdd := []byte{3}
-	nonInclusionProof, err := tree.GetNonMembershipProof(keyToAdd)
-	require.NoError(err)
-	nonExist := nonInclusionProof.GetNonexist()
-	leftNonExist := nonExist.Left
-	if leftNonExist != nil {
-		leftKey := leftNonExist.Key
-		if has, _ := dst.Has(leftKey); !has {
-			ics23proof, err := tree.GetMembershipProof(leftKey)
-			require.NoError(err)
-			err = dst.AddProof(ics23proof)
-			require.NoError(err)
-			dst.BuildTree(rootHash)
-			require.NoError(err)
-		}
-		// TODO: Add sibling node to dst
-	}
-	rightNonExist := nonExist.Right
-	if rightNonExist != nil {
-		rightKey := rightNonExist.Key
-		if has, _ := dst.Has(rightKey); !has {
-			ics23proof, err := tree.GetMembershipProof(rightKey)
-			require.NoError(err)
-			err = dst.AddProof(ics23proof)
-			require.NoError(err)
-			dst.BuildTree(rootHash)
-			require.NoError(err)
-		}
-		// TODO: Add sibling node to dst
-	}
+	// nonInclusionProof, err := tree.GetNonMembershipProof(keyToAdd)
+	// require.NoError(err)
+	// nonExist := nonInclusionProof.GetNonexist()
+	// leftNonExist := nonExist.Left
+	// if leftNonExist != nil {
+	// 	leftKey := leftNonExist.Key
+	// 	if has, _ := dst.Has(leftKey); !has {
+	// 		err = dst.AddPath(tree.ImmutableTree, leftKey)
+	// 		require.NoError(err)
+	// 		dst.BuildTree(rootHash)
+	// 		require.NoError(err)
+	// 	}
+	// 	// TODO: Add sibling node to dst
+	// }
+	// rightNonExist := nonExist.Right
+	// if rightNonExist != nil {
+	// 	rightKey := rightNonExist.Key
+	// 	if has, _ := dst.Has(rightKey); !has {
+	// 		err = dst.AddPath(tree.ImmutableTree, rightKey)
+	// 		require.NoError(err)
+	// 		dst.BuildTree(rootHash)
+	// 		require.NoError(err)
+	// 	}
+	// 	// TODO: Add sibling node to dst
+	// }
 
 	dst.SaveVersion()
 

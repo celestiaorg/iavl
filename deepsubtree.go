@@ -16,6 +16,15 @@ type DeepSubTree struct {
 	*MutableTree
 }
 
+func (node *Node) updateInnerNodeKey() {
+	if node.leftNode != nil {
+		node.key = node.leftNode.getHighestKey()
+	}
+	if node.rightNode != nil {
+		node.key = node.rightNode.getLowestKey()
+	}
+}
+
 // Traverses in the nodes in the NodeDB in the Deep Subtree
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
@@ -51,13 +60,7 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 	// and set their keys correctly
 	for _, node := range nodes {
 		pnode, _ := dst.ndb.GetNode(node.hash)
-		if pnode.leftNode != nil {
-			pnode.key = pnode.leftNode.getHighestKey()
-		}
-
-		if pnode.rightNode != nil {
-			pnode.key = pnode.rightNode.getLowestKey()
-		}
+		pnode.updateInnerNodeKey()
 	}
 
 	return nil
@@ -79,6 +82,20 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 }
 
 func recomputeHash(node *Node) error {
+	if node.leftHash == nil && node.leftNode != nil {
+		leftHash, err := node.leftNode._hash()
+		if err != nil {
+			return err
+		}
+		node.leftHash = leftHash
+	}
+	if node.rightHash == nil && node.rightNode != nil {
+		rightHash, err := node.rightNode._hash()
+		if err != nil {
+			return err
+		}
+		node.rightHash = rightHash
+	}
 	node.hash = nil
 	_, err := node._hash()
 	return err
@@ -92,10 +109,28 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	version := dst.version + 1
 
 	if node.isLeaf() {
-		if !bytes.Equal(key, node.key) {
-			return nil, false, fmt.Errorf("adding new keys is not supported")
+		switch bytes.Compare(key, node.key) {
+		case -1:
+			return &Node{
+				key:           node.key,
+				subtreeHeight: 1,
+				size:          2,
+				leftNode:      NewNode(key, value, version),
+				rightNode:     node,
+				version:       version,
+			}, false, nil
+		case 1:
+			return &Node{
+				key:           key,
+				subtreeHeight: 1,
+				size:          2,
+				leftNode:      node,
+				rightNode:     NewNode(key, value, version),
+				version:       version,
+			}, false, nil
+		default:
+			return NewNode(key, value, version), true, nil
 		}
-		return NewNode(key, value, version), true, nil
 	}
 	// Otherwise, node is inner node
 	node.version = version
@@ -128,7 +163,19 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	default:
 		return nil, false, fmt.Errorf("inner node does not have key set correctly")
 	}
-	return node, updated, nil
+	if updated {
+		return node, updated, nil
+	}
+	err = node.calcHeightAndSize(dst.ImmutableTree)
+	if err != nil {
+		return nil, false, err
+	}
+	orphans := dst.prepareOrphansSlice()
+	newNode, err := dst.balance(node, &orphans)
+	if err != nil {
+		return nil, false, err
+	}
+	return newNode, updated, err
 }
 
 // nolint: unused

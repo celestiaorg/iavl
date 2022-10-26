@@ -142,11 +142,47 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	require.NoError(err)
 	dst := DeepSubTree{mutableTree}
 	for _, subsetKey := range subsetKeys {
-		err = dst.AddPath(tree.ImmutableTree, subsetKey)
+		ics23proof, err := tree.GetMembershipProof(subsetKey)
+		require.NoError(err)
+		err = dst.AddProof(ics23proof)
 		require.NoError(err)
 		dst.BuildTree(rootHash)
 		require.NoError(err)
 	}
+
+	// Add exclusion proof for `c`
+	keyToAdd := []byte("c")
+	valueToAdd := []byte{3}
+	nonInclusionProof, err := tree.GetNonMembershipProof(keyToAdd)
+	require.NoError(err)
+	nonExist := nonInclusionProof.GetNonexist()
+	leftNonExist := nonExist.Left
+	if leftNonExist != nil {
+		leftKey := leftNonExist.Key
+		if has, _ := dst.Has(leftKey); !has {
+			ics23proof, err := tree.GetMembershipProof(leftKey)
+			require.NoError(err)
+			err = dst.AddProof(ics23proof)
+			require.NoError(err)
+			dst.BuildTree(rootHash)
+			require.NoError(err)
+		}
+		// TODO: Add sibling node to dst
+	}
+	rightNonExist := nonExist.Right
+	if rightNonExist != nil {
+		rightKey := rightNonExist.Key
+		if has, _ := dst.Has(rightKey); !has {
+			ics23proof, err := tree.GetMembershipProof(rightKey)
+			require.NoError(err)
+			err = dst.AddProof(ics23proof)
+			require.NoError(err)
+			dst.BuildTree(rootHash)
+			require.NoError(err)
+		}
+		// TODO: Add sibling node to dst
+	}
+
 	dst.SaveVersion()
 
 	fmt.Println("PRINT DST TREE")
@@ -156,8 +192,6 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	// Check root hashes are equal
 	require.Equal(dst.root.hash, tree.root.hash)
 
-	keyToAdd := []byte("c")
-	valueToAdd := []byte{3}
 	// Add a key, c, to the tree and the dst
 	dst.Set(keyToAdd, valueToAdd)
 	dst.SaveVersion()

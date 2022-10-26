@@ -177,7 +177,9 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 		return nil, false, err
 	}
 	orphans := dst.prepareOrphansSlice()
+	node.persisted = false
 	newNode, err := dst.balance(node, &orphans)
+	node.persisted = true
 	if err != nil {
 		return nil, false, err
 	}

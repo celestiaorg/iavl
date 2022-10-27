@@ -397,7 +397,7 @@ func fromInnerOp(iop *ics23.InnerOp, prevHash []byte) (*Node, error) {
 	var left, right []byte
 	// if left is empty, skip to right
 	if r.Len() != 0 {
-		left = make([]byte, 32)
+		left = make([]byte, lengthByte)
 		n, err := r.Read(left)
 		if err != nil {
 			return nil, err
@@ -415,7 +415,7 @@ func fromInnerOp(iop *ics23.InnerOp, prevHash []byte) (*Node, error) {
 	}
 
 	if len(iop.Suffix) > 0 {
-		right = make([]byte, 32)
+		right = make([]byte, lengthByte)
 		r = bytes.NewReader(iop.Suffix)
 		b, err := r.ReadByte()
 		if err != nil {

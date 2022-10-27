@@ -287,16 +287,16 @@ func (dst *DeepSubTree) AddProof(proof *ics23.CommitmentProof) error {
 	proof = ics23.Decompress(proof)
 
 	if exist := proof.GetExist(); exist != nil {
-		err := dst.addExistenceProofProof(exist)
+		err := dst.addExistenceProof(exist)
 		if err != nil {
 			return err
 		}
 	} else if nonExist := proof.GetNonexist(); nonExist != nil {
-		err := dst.addExistenceProofProof(nonExist.Left)
+		err := dst.addExistenceProof(nonExist.Left)
 		if err != nil {
 			return err
 		}
-		err = dst.addExistenceProofProof(nonExist.Right)
+		err = dst.addExistenceProof(nonExist.Right)
 		if err != nil {
 			return err
 		}
@@ -305,7 +305,7 @@ func (dst *DeepSubTree) AddProof(proof *ics23.CommitmentProof) error {
 	return dst.ndb.Commit()
 }
 
-func (dst *DeepSubTree) addExistenceProofProof(proof *ics23.ExistenceProof) error {
+func (dst *DeepSubTree) addExistenceProof(proof *ics23.ExistenceProof) error {
 	leaf, err := fromLeafOp(proof.GetLeaf(), proof.Key, proof.Value)
 	if err != nil {
 		return err

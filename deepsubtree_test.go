@@ -148,18 +148,22 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		require.NoError(err)
 	}
 
-	// Add exclusion proof for `c`
-	keyToAdd := []byte("c")
-	valueToAdd := []byte{3}
-	ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
-	require.NoError(err)
-	dst_nonExistenceProof, err := convertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
-	require.NoError(err)
-	dst.AddNonExistenceProof(dst_nonExistenceProof)
-	require.NoError(err)
-	dst.BuildTree(rootHash)
-	require.NoError(err)
-
+	keysToAdd := [][]byte{
+		[]byte("c"), []byte("d"),
+	}
+	valuesToAdd := [][]byte{
+		{3}, {4},
+	}
+	for _, keyToAdd := range keysToAdd {
+		ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
+		require.NoError(err)
+		dst_nonExistenceProof, err := convertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
+		require.NoError(err)
+		dst.AddNonExistenceProof(dst_nonExistenceProof)
+		require.NoError(err)
+		dst.BuildTree(rootHash)
+		require.NoError(err)
+	}
 	dst.SaveVersion()
 
 	fmt.Println("PRINT DST TREE")
@@ -169,17 +173,21 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	// Check root hashes are equal
 	require.Equal(dst.root.hash, tree.root.hash)
 
-	// Add a key, c, to the tree and the dst
-	dst.Set(keyToAdd, valueToAdd)
-	dst.SaveVersion()
-	fmt.Println("PRINT DST TREE")
-	_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
-	fmt.Println("PRINT DST TREE END")
-	tree.Set(keyToAdd, valueToAdd)
-	tree.SaveVersion()
-	fmt.Println("PRINT TREE")
-	_ = printNode(tree.ndb, tree.root, 0)
-	fmt.Println("PRINT TREE END")
+	require.Equal(len(keysToAdd), len(valuesToAdd))
+	for i := range keysToAdd {
+		keyToAdd := keysToAdd[i]
+		valueToAdd := valuesToAdd[i]
+		dst.Set(keyToAdd, valueToAdd)
+		dst.SaveVersion()
+		fmt.Println("PRINT DST TREE")
+		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
+		fmt.Println("PRINT DST TREE END")
+		tree.Set(keyToAdd, valueToAdd)
+		tree.SaveVersion()
+		fmt.Println("PRINT TREE")
+		_ = printNode(tree.ndb, tree.root, 0)
+		fmt.Println("PRINT TREE END")
+	}
 
 	// Check root hashes are equal
 	require.Equal(dst.root.hash, tree.root.hash)

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 
 	ics23 "github.com/confio/ics23/go"
 )
@@ -213,10 +214,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 // Prints a Deep Subtree recursively.
 // Modified version of printNode from util.go
 func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
-	indentPrefix := ""
-	for i := 0; i < indent; i++ {
-		indentPrefix += "    "
-	}
+	indentPrefix := strings.Repeat("    ", indent)
 
 	if node == nil {
 		fmt.Printf("%s<nil>\n", indentPrefix)

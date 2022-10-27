@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
 	ics23 "github.com/confio/ics23/go"
 )
 

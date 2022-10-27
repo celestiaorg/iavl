@@ -92,6 +92,19 @@ func (dst *DeepSubTree) addPath(pl PathToLeaf, leaf *Node) error {
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
 func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
+	if dst.root == nil {
+		rootNode, rootErr := dst.ndb.GetNode(rootHash)
+		if rootErr != nil {
+			return fmt.Errorf("could not set root of deep subtree: %w", rootErr)
+		}
+		dst.root = rootNode
+	} else if !bytes.Equal(dst.root.hash, rootHash) {
+		return fmt.Errorf(
+			"deep Subtree rootHash: %s does not match expected rootHash: %s",
+			dst.root.hash,
+			rootHash,
+		)
+	}
 	nodes, traverseErr := dst.ndb.nodes()
 	if traverseErr != nil {
 		return fmt.Errorf("could not traverse nodedb: %w", traverseErr)
@@ -117,13 +130,6 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 		if pnode.rightNode != nil {
 			pnode.key = pnode.rightNode.getLowestKey()
 		}
-	}
-	if dst.root == nil {
-		rootNode, rootErr := dst.ndb.GetNode(rootHash)
-		if rootErr != nil {
-			return fmt.Errorf("could not set root of deep subtree: %w", rootErr)
-		}
-		dst.root = rootNode
 	}
 
 	return nil

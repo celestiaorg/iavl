@@ -179,6 +179,8 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		valueToAdd := valuesToAdd[i]
 		dst.Set(keyToAdd, valueToAdd)
 		dst.SaveVersion()
+		err = dst.BuildTree(dst.root.hash)
+		require.NoError(err)
 		fmt.Println("PRINT DST TREE")
 		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
 		fmt.Println("PRINT DST TREE END")

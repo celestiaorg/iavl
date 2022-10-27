@@ -83,14 +83,9 @@ func (dst *DeepSubTree) addPath(pl PathToLeaf, leaf *Node) error {
 				return err
 			}
 		}
-		if i == 0 {
-			if err := dst.ndb.Commit(); err != nil {
-				return err
-			}
-		}
 	}
 
-	return nil
+	return dst.ndb.Commit()
 }
 
 // Traverses in the nodes in the NodeDB in the Deep Subtree

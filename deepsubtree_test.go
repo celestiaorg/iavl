@@ -101,7 +101,6 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		require.NoError(err)
 		dst := DeepSubTree{mutableTree}
 		for _, subsetKey := range subsetKeys {
-			//proof, _, _, err := tree.getRangeProof([]byte("a"), nil, 1)
 			ics23proof, err := tree.GetMembershipProof(subsetKey)
 			require.NoError(err)
 			err = dst.AddProof(ics23proof)

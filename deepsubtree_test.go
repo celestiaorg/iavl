@@ -46,7 +46,9 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	// Put all keys inside the tree one by one
 	// and print Deep Subtree at each step
 	for _, key := range allkeys {
-		err := dst.AddPath(tree.ImmutableTree, key)
+		ics23proof, err := tree.GetMembershipProof(key)
+		require.NoError(err)
+		err = dst.AddProof(ics23proof)
 		require.NoError(err)
 
 		err = dst.BuildTree(rootHash)
@@ -100,7 +102,10 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		dst := DeepSubTree{mutableTree}
 		for _, subsetKey := range subsetKeys {
 			//proof, _, _, err := tree.getRangeProof([]byte("a"), nil, 1)
-			err = dst.AddPath(tree.ImmutableTree, subsetKey)
+			ics23proof, err := tree.GetMembershipProof(subsetKey)
+			require.NoError(err)
+			err = dst.AddProof(ics23proof)
+			require.NoError(err)
 			require.NoError(err)
 			dst.BuildTree(rootHash)
 			require.NoError(err)

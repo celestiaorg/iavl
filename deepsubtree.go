@@ -72,6 +72,7 @@ func (dst *DeepSubTree) addPath(pl PathToLeaf, leaf *Node) error {
 		}
 		prevHash = hash
 
+		// Only save the node to the deep subtree if it doesn't already exist there
 		has, err := dst.ndb.Has(n.hash)
 		if err != nil {
 			return err

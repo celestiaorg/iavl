@@ -164,6 +164,8 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	if node.isLeaf() {
 		switch bytes.Compare(key, node.key) {
 		case -1:
+			// Create a new inner node with the left node as a new leaf node with
+			// given key and right node as the existing leaf node
 			return &Node{
 				key:           node.key,
 				subtreeHeight: 1,
@@ -173,6 +175,8 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 				version:       version,
 			}, false, nil
 		case 1:
+			// Create a new inner node with the left node as the existing leaf node
+			// and right node as a new leaf node with given key
 			return &Node{
 				key:           key,
 				subtreeHeight: 1,
@@ -182,6 +186,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 				version:       version,
 			}, false, nil
 		default:
+			// Key already exists so create a new leaf node with updated value
 			return NewNode(key, value, version), true, nil
 		}
 	}

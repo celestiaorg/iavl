@@ -16,7 +16,7 @@ type DeepSubTree struct {
 	*MutableTree
 }
 
-type DST_NonExistenceProof struct {
+type DSTNonExistenceProof struct {
 	*ics23.NonExistenceProof
 	leftSiblingProof  *ics23.ExistenceProof
 	rightSiblingProof *ics23.ExistenceProof
@@ -25,8 +25,8 @@ type DST_NonExistenceProof struct {
 func convertToDSTNonExistenceProof(
 	tree *MutableTree,
 	nonExistenceProof *ics23.NonExistenceProof,
-) (*DST_NonExistenceProof, error) {
-	dst_nonExistenceProof := DST_NonExistenceProof{
+) (*DSTNonExistenceProof, error) {
+	dstNonExistenceProof := DSTNonExistenceProof{
 		NonExistenceProof: nonExistenceProof,
 	}
 	if nonExistenceProof.Left != nil {
@@ -34,7 +34,7 @@ func convertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dst_nonExistenceProof.leftSiblingProof, err = tree.createExistenceProof(leftSibling.key)
+		dstNonExistenceProof.leftSiblingProof, err = tree.createExistenceProof(leftSibling.key)
 		if err != nil {
 			return nil, err
 		}
@@ -44,12 +44,12 @@ func convertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dst_nonExistenceProof.rightSiblingProof, err = tree.createExistenceProof(rightSibling.key)
+		dstNonExistenceProof.rightSiblingProof, err = tree.createExistenceProof(rightSibling.key)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return &dst_nonExistenceProof, nil
+	return &dstNonExistenceProof, nil
 }
 
 func (tree *ImmutableTree) GetSiblingNode(key []byte) (*Node, error) {
@@ -454,7 +454,7 @@ func (dst *DeepSubTree) AddExistenceProof(existProof *ics23.ExistenceProof) erro
 	return dst.ndb.Commit()
 }
 
-func (dst *DeepSubTree) AddNonExistenceProof(nonExistProof *DST_NonExistenceProof) error {
+func (dst *DeepSubTree) AddNonExistenceProof(nonExistProof *DSTNonExistenceProof) error {
 	if nonExistProof.Left != nil {
 		err := dst.AddExistenceProof(nonExistProof.Left)
 		if err != nil {

@@ -130,9 +130,6 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		return tree
 	}
 	tree := getTree()
-	fmt.Println("PRINT TREE")
-	_ = printNode(tree.ndb, tree.root, 0)
-	fmt.Println("PRINT TREE END")
 
 	subsetKeys := [][]byte{
 		[]byte("b"),
@@ -167,10 +164,6 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	}
 	dst.SaveVersion()
 
-	fmt.Println("PRINT DST TREE")
-	_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
-	fmt.Println("PRINT DST TREE END")
-
 	// Check root hashes are equal
 	require.Equal(dst.root.hash, tree.root.hash)
 
@@ -183,14 +176,8 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		dst.SaveVersion()
 		err = dst.BuildTree(dst.root.hash)
 		require.NoError(err)
-		fmt.Println("PRINT DST TREE")
-		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
-		fmt.Println("PRINT DST TREE END")
 		tree.Set(keyToAdd, valueToAdd)
 		tree.SaveVersion()
-		fmt.Println("PRINT TREE")
-		_ = printNode(tree.ndb, tree.root, 0)
-		fmt.Println("PRINT TREE END")
 
 		// Check root hashes are equal
 		require.Equal(dst.root.hash, tree.root.hash)
@@ -203,14 +190,8 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		dst.SaveVersion()
 		err = dst.BuildTree(dst.root.hash)
 		require.NoError(err)
-		fmt.Println("PRINT DST TREE")
-		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
-		fmt.Println("PRINT DST TREE END")
 		tree.Remove(keyToAdd)
 		tree.SaveVersion()
-		fmt.Println("PRINT TREE")
-		_ = printNode(tree.ndb, tree.root, 0)
-		fmt.Println("PRINT TREE END")
 
 		// Check root hashes are equal
 		require.Equal(dst.root.hash, tree.root.hash)

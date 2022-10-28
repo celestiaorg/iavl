@@ -154,6 +154,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	valuesToAdd := [][]byte{
 		{3}, {4},
 	}
+	// Add non-existence proofs for keys we expect to add later
 	for _, keyToAdd := range keysToAdd {
 		ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
 		require.NoError(err)
@@ -174,6 +175,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	require.Equal(dst.root.hash, tree.root.hash)
 
 	require.Equal(len(keysToAdd), len(valuesToAdd))
+	// Add all the keys we intend to add and check root hashes stay equal
 	for i := range keysToAdd {
 		keyToAdd := keysToAdd[i]
 		valueToAdd := valuesToAdd[i]
@@ -189,8 +191,28 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		fmt.Println("PRINT TREE")
 		_ = printNode(tree.ndb, tree.root, 0)
 		fmt.Println("PRINT TREE END")
+
+		// Check root hashes are equal
+		require.Equal(dst.root.hash, tree.root.hash)
 	}
 
-	// Check root hashes are equal
-	require.Equal(dst.root.hash, tree.root.hash)
+	// Delete all the keys we added and check root hashes stay equal
+	for i := range keysToAdd {
+		keyToAdd := keysToAdd[i]
+		dst.Remove(keyToAdd)
+		dst.SaveVersion()
+		err = dst.BuildTree(dst.root.hash)
+		require.NoError(err)
+		fmt.Println("PRINT DST TREE")
+		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
+		fmt.Println("PRINT DST TREE END")
+		tree.Remove(keyToAdd)
+		tree.SaveVersion()
+		fmt.Println("PRINT TREE")
+		_ = printNode(tree.ndb, tree.root, 0)
+		fmt.Println("PRINT TREE END")
+
+		// Check root hashes are equal
+		require.Equal(dst.root.hash, tree.root.hash)
+	}
 }

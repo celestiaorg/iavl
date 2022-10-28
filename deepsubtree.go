@@ -149,26 +149,6 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 	return updated, recomputeHash(dst.root)
 }
 
-func recomputeHash(node *Node) error {
-	if node.leftHash == nil && node.leftNode != nil {
-		leftHash, err := node.leftNode._hash()
-		if err != nil {
-			return err
-		}
-		node.leftHash = leftHash
-	}
-	if node.rightHash == nil && node.rightNode != nil {
-		rightHash, err := node.rightNode._hash()
-		if err != nil {
-			return err
-		}
-		node.rightHash = rightHash
-	}
-	node.hash = nil
-	_, err := node._hash()
-	return err
-}
-
 // Helper method for set to traverse and find the node with given key
 // recursively.
 func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
@@ -246,6 +226,145 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 		return nil, false, err
 	}
 	return newNode, updated, err
+}
+
+// remove tries to remove a key from the tree and if removed, returns its
+// value, nodes orphaned and 'true'.
+func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err error) {
+	if dst.root == nil {
+		return nil, false, nil
+	}
+	newRootHash, newRoot, value, err := dst.recursiveRemove(dst.root, key)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if !dst.skipFastStorageUpgrade {
+		dst.addUnsavedRemoval(key)
+	}
+
+	if newRoot == nil && newRootHash != nil {
+		dst.root, err = dst.ndb.GetNode(newRootHash)
+		if err != nil {
+			return nil, false, err
+		}
+	} else {
+		dst.root = newRoot
+	}
+	return value, true, nil
+}
+
+// removes the node corresponding to the passed key and balances the tree.
+// It returns:
+// - the hash of the new node (or nil if the node is the one removed)
+// - the node that replaces the orig. node after remove
+// - new leftmost leaf key for tree after successfully removing 'key' if changed.
+// - the removed value
+// - the orphaned nodes.
+func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte, newSelf *Node, newValue []byte, err error) {
+	version := dst.version + 1
+
+	if node.isLeaf() {
+		if bytes.Equal(key, node.key) {
+			return nil, nil, nil, nil
+		}
+		return node.hash, node, nil, nil
+	}
+
+	// Otherwise, node is inner node
+	node.version = version
+	leftNode, rightNode := node.leftNode, node.rightNode
+	if leftNode == nil && rightNode == nil {
+		return nil, nil, nil, fmt.Errorf("inner node must have at least one child node set")
+	}
+	compare := bytes.Compare(key, node.key)
+
+	// node.key < key; we go to the left to find the key:
+	if leftNode != nil && (compare < 0 || rightNode == nil) {
+		leftNode, err := node.getLeftNode(dst.ImmutableTree)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		newLeftHash, newLeftNode, newKey, err := dst.recursiveRemove(leftNode, key)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		if newLeftHash == nil && newLeftNode == nil { // left node held value, was removed
+			return node.rightHash, node.rightNode, node.key, nil
+		}
+
+		newNode, err := node.clone(version)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		newNode.leftHash, newNode.leftNode = newLeftHash, newLeftNode
+		err = newNode.calcHeightAndSize(dst.ImmutableTree)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		orphans := dst.prepareOrphansSlice()
+		newNode, err = dst.balance(newNode, &orphans)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return newNode.hash, newNode, newKey, nil
+	} else if rightNode != nil && (compare >= 0 || leftNode == nil) {
+		newRightHash, newRightNode, newKey, err := dst.recursiveRemove(rightNode, key)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if newRightHash == nil && newRightNode == nil { // right node held value, was removed
+			return node.leftHash, node.leftNode, nil, nil
+		}
+
+		newNode, err := node.clone(version)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		newNode.rightHash, newNode.rightNode = newRightHash, newRightNode
+		if newKey != nil {
+			newNode.key = newKey
+		}
+		err = newNode.calcHeightAndSize(dst.ImmutableTree)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		orphans := dst.prepareOrphansSlice()
+		newNode, err = dst.balance(newNode, &orphans)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return newNode.hash, newNode, nil, nil
+	}
+	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
+}
+
+func recomputeHash(node *Node) error {
+	if node.leftHash == nil && node.leftNode != nil {
+		leftHash, err := node.leftNode._hash()
+		if err != nil {
+			return err
+		}
+		node.leftHash = leftHash
+	}
+	if node.rightHash == nil && node.rightNode != nil {
+		rightHash, err := node.rightNode._hash()
+		if err != nil {
+			return err
+		}
+		node.rightHash = rightHash
+	}
+	node.hash = nil
+	_, err := node._hash()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // nolint: unused

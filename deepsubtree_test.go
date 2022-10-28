@@ -155,7 +155,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for _, keyToAdd := range keysToAdd {
 		ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
 		require.NoError(err)
-		dst_nonExistenceProof, err := convertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
+		dst_nonExistenceProof, err := ConvertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
 		require.NoError(err)
 		dst.AddNonExistenceProof(dst_nonExistenceProof)
 		require.NoError(err)

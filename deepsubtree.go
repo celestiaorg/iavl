@@ -22,7 +22,9 @@ type DSTNonExistenceProof struct {
 	rightSiblingProof *ics23.ExistenceProof
 }
 
-func convertToDSTNonExistenceProof(
+// Constructs a DSTNonExistenceProof using an ICS23 Non-Existence proof
+// and sibling node proofs. Returns the constructed DSTNonExistenceProof.
+func ConvertToDSTNonExistenceProof(
 	tree *MutableTree,
 	nonExistenceProof *ics23.NonExistenceProof,
 ) (*DSTNonExistenceProof, error) {
@@ -30,7 +32,7 @@ func convertToDSTNonExistenceProof(
 		NonExistenceProof: nonExistenceProof,
 	}
 	if nonExistenceProof.Left != nil {
-		leftSibling, err := tree.GetSiblingNode(nonExistenceProof.Left.Key)
+		leftSibling, err := tree.getSiblingNode(nonExistenceProof.Left.Key)
 		if err != nil {
 			return nil, err
 		}
@@ -40,7 +42,7 @@ func convertToDSTNonExistenceProof(
 		}
 	}
 	if nonExistenceProof.Right != nil {
-		rightSibling, err := tree.GetSiblingNode(nonExistenceProof.Right.Key)
+		rightSibling, err := tree.getSiblingNode(nonExistenceProof.Right.Key)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +54,8 @@ func convertToDSTNonExistenceProof(
 	return &dstNonExistenceProof, nil
 }
 
-func (tree *ImmutableTree) GetSiblingNode(key []byte) (*Node, error) {
+// Returns the sibling node of a leaf node with given key
+func (tree *ImmutableTree) getSiblingNode(key []byte) (*Node, error) {
 	siblingNode, err := tree.recursiveGetSiblingNode(tree.root, key)
 	if err != nil {
 		return nil, err
@@ -60,6 +63,7 @@ func (tree *ImmutableTree) GetSiblingNode(key []byte) (*Node, error) {
 	return siblingNode, nil
 }
 
+// Recursively iterates the tree to return the sibling node of a leaf node with given key
 func (tree *ImmutableTree) recursiveGetSiblingNode(node *Node, key []byte) (*Node, error) {
 	if node == nil || node.isLeaf() {
 		return nil, nil

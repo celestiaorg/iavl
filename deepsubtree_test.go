@@ -1,7 +1,6 @@
 package iavl
 
 import (
-	"fmt"
 	"testing"
 
 	db "github.com/cosmos/cosmos-db"
@@ -30,10 +29,6 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	tree := getTree()
 	rootHash := tree.root.hash
 
-	fmt.Println("PRINT TREE")
-	_ = printNode(tree.ndb, tree.root, 0)
-	fmt.Println("PRINT TREE END")
-
 	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
 	require.NoError(err)
 	dst := DeepSubTree{mutableTree}
@@ -44,7 +39,6 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	}
 
 	// Put all keys inside the tree one by one
-	// and print Deep Subtree at each step
 	for _, key := range allkeys {
 		ics23proof, err := tree.GetMembershipProof(key)
 		require.NoError(err)
@@ -53,12 +47,6 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 
 		err = dst.BuildTree(rootHash)
 		require.NoError(err)
-
-		// Prints the working deep subtree for keys added so fa∂r.
-		fmt.Println("PRINT DST TREE")
-		_ = dst.printNodeDeepSubtree(dst.ImmutableTree.root, 0)
-		fmt.Println("PRINT DST TREE END")
-		fmt.Println()
 	}
 
 	// Check root hashes are equal
@@ -104,7 +92,6 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 			ics23proof, err := tree.GetMembershipProof(subsetKey)
 			require.NoError(err)
 			err = dst.AddProof(ics23proof)
-			require.NoError(err)
 			require.NoError(err)
 			dst.BuildTree(rootHash)
 			require.NoError(err)

@@ -3,8 +3,8 @@ package iavl
 import (
 	"testing"
 
-	db "github.com/cosmos/cosmos-db"
 	"github.com/stretchr/testify/require"
+	db "github.com/tendermint/tm-db"
 )
 
 // Tests creating a Deep Subtree step by step
@@ -29,7 +29,7 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	tree := getTree()
 	rootHash := tree.root.hash
 
-	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+	mutableTree, err := NewMutableTree(db.NewMemDB(), 100)
 	require.NoError(err)
 	dst := DeepSubTree{mutableTree}
 
@@ -85,7 +85,7 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 	for _, subsetKeys := range testCases {
 		tree := getTree()
 		rootHash := tree.root.hash
-		mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+		mutableTree, err := NewMutableTree(db.NewMemDB(), 100)
 		require.NoError(err)
 		dst := DeepSubTree{mutableTree}
 		for _, subsetKey := range subsetKeys {
@@ -135,7 +135,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		[]byte("b"),
 	}
 	rootHash := tree.root.hash
-	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+	mutableTree, err := NewMutableTree(db.NewMemDB(), 100)
 	require.NoError(err)
 	dst := DeepSubTree{mutableTree}
 	for _, subsetKey := range subsetKeys {
@@ -155,7 +155,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for _, keyToAdd := range keysToAdd {
 		ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
 		require.NoError(err)
-		dst_nonExistenceProof, err := ConvertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
+		dst_nonExistenceProof, err := ConvertToDSTNonExistenceProof(tree.ImmutableTree, ics23proof.GetNonexist())
 		require.NoError(err)
 		dst.AddNonExistenceProof(dst_nonExistenceProof)
 		require.NoError(err)

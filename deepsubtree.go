@@ -25,7 +25,7 @@ type DSTNonExistenceProof struct {
 // Constructs a DSTNonExistenceProof using an ICS23 Non-Existence proof
 // and sibling node proofs. Returns the constructed DSTNonExistenceProof.
 func ConvertToDSTNonExistenceProof(
-	tree *MutableTree,
+	tree *ImmutableTree,
 	nonExistenceProof *ics23.NonExistenceProof,
 ) (*DSTNonExistenceProof, error) {
 	dstNonExistenceProof := DSTNonExistenceProof{
@@ -36,7 +36,7 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.leftSiblingProof, err = tree.createExistenceProof(leftSibling.key)
+		dstNonExistenceProof.leftSiblingProof, err = createExistenceProof(tree, leftSibling.key)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +46,7 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.rightSiblingProof, err = tree.createExistenceProof(rightSibling.key)
+		dstNonExistenceProof.rightSiblingProof, err = createExistenceProof(tree, rightSibling.key)
 		if err != nil {
 			return nil, err
 		}
@@ -175,23 +175,23 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 			// Create a new inner node with the left node as a new leaf node with
 			// given key and right node as the existing leaf node
 			return &Node{
-				key:           node.key,
-				subtreeHeight: 1,
-				size:          2,
-				leftNode:      NewNode(key, value, version),
-				rightNode:     node,
-				version:       version,
+				key:       node.key,
+				height:    1,
+				size:      2,
+				leftNode:  NewNode(key, value, version),
+				rightNode: node,
+				version:   version,
 			}, false, nil
 		case 1:
 			// Create a new inner node with the left node as the existing leaf node
 			// and right node as a new leaf node with given key
 			return &Node{
-				key:           key,
-				subtreeHeight: 1,
-				size:          2,
-				leftNode:      node,
-				rightNode:     NewNode(key, value, version),
-				version:       version,
+				key:       key,
+				height:    1,
+				size:      2,
+				leftNode:  node,
+				rightNode: NewNode(key, value, version),
+				version:   version,
 			}, false, nil
 		default:
 			// Key already exists so create a new leaf node with updated value
@@ -254,10 +254,6 @@ func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err erro
 	newRootHash, newRoot, value, err := dst.recursiveRemove(dst.root, key)
 	if err != nil {
 		return nil, false, err
-	}
-
-	if !dst.skipFastStorageUpgrade {
-		dst.addUnsavedRemoval(key)
 	}
 
 	if newRoot == nil && newRootHash != nil {
@@ -408,7 +404,7 @@ func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
 
 	fmt.Printf("%sh:%X\n", indentPrefix, hash)
 	if node.isLeaf() {
-		fmt.Printf("%s%X:%X (%v)\n", indentPrefix, node.key, node.value, node.subtreeHeight)
+		fmt.Printf("%s%X:%X (%v)\n", indentPrefix, node.key, node.value, node.height)
 	}
 
 	if node.leftNode != nil {
@@ -632,11 +628,11 @@ func fromInnerOp(iop *ics23.InnerOp, prevHash []byte) (*Node, error) {
 	}
 
 	node := &Node{
-		leftHash:      left,
-		rightHash:     right,
-		version:       version,
-		size:          size,
-		subtreeHeight: int8(height),
+		leftHash:  left,
+		rightHash: right,
+		version:   version,
+		size:      size,
+		height:    int8(height),
 	}
 
 	_, err = node._hash()

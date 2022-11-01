@@ -155,7 +155,7 @@ func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
 
 	fmt.Printf("%sh:%X\n", indentPrefix, hash)
 	if node.isLeaf() {
-		fmt.Printf("%s%X:%X (%v)\n", indentPrefix, node.key, node.value, node.subtreeHeight)
+		fmt.Printf("%s%X:%X (%v)\n", indentPrefix, node.key, node.value, node.height)
 	}
 
 	if node.leftNode != nil {
@@ -365,11 +365,11 @@ func fromInnerOp(iop *ics23.InnerOp, prevHash []byte) (*Node, error) {
 	}
 
 	node := &Node{
-		leftHash:      left,
-		rightHash:     right,
-		version:       version,
-		size:          size,
-		subtreeHeight: int8(height),
+		leftHash:  left,
+		rightHash: right,
+		version:   version,
+		size:      size,
+		height:    int8(height),
 	}
 
 	_, err = node._hash()

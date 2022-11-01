@@ -3,8 +3,8 @@ package iavl
 import (
 	"testing"
 
-	db "github.com/cosmos/cosmos-db"
 	"github.com/stretchr/testify/require"
+	db "github.com/tendermint/tm-db"
 )
 
 // Tests creating a Deep Subtree step by step

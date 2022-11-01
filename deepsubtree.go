@@ -3,12 +3,33 @@ package iavl
 import (
 	"bytes"
 	"fmt"
+
+	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/iavl/fastnode"
 )
 
 // Represents a IAVL Deep Subtree that can contain
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
+}
+
+// NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
+func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, version int64) (*MutableTree, error) {
+	ndb := newNodeDB(db, cacheSize, nil)
+	head := &ImmutableTree{ndb: ndb, skipFastStorageUpgrade: skipFastStorageUpgrade, version: version}
+
+	return &MutableTree{
+		ImmutableTree:            head,
+		lastSaved:                head.clone(),
+		orphans:                  map[string]int64{},
+		versions:                 map[int64]bool{},
+		allRootLoaded:            false,
+		unsavedFastNodeAdditions: make(map[string]*fastnode.Node),
+		unsavedFastNodeRemovals:  make(map[string]interface{}),
+		ndb:                      ndb,
+		skipFastStorageUpgrade:   skipFastStorageUpgrade,
+	}, nil
 }
 
 // Adds the node with the given key in the Deep Subtree

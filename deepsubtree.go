@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	ics23 "github.com/confio/ics23/go"
+	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/iavl/fastnode"
 )
 
 // Represents a IAVL Deep Subtree that can contain
@@ -18,8 +20,26 @@ type DeepSubTree struct {
 
 type DSTNonExistenceProof struct {
 	*ics23.NonExistenceProof
-	leftSiblingProof  *ics23.ExistenceProof
-	rightSiblingProof *ics23.ExistenceProof
+	LeftSiblingProof  *ics23.ExistenceProof
+	RightSiblingProof *ics23.ExistenceProof
+}
+
+// NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
+func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, version int64) (*DeepSubTree, error) {
+	ndb := newNodeDB(db, cacheSize, nil)
+	head := &ImmutableTree{ndb: ndb, version: version}
+	mutableTree := &MutableTree{
+		ImmutableTree:            head,
+		lastSaved:                head.clone(),
+		orphans:                  map[string]int64{},
+		versions:                 map[int64]bool{},
+		allRootLoaded:            false,
+		unsavedFastNodeAdditions: make(map[string]*fastnode.Node),
+		unsavedFastNodeRemovals:  make(map[string]interface{}),
+		ndb:                      ndb,
+		skipFastStorageUpgrade:   skipFastStorageUpgrade,
+	}
+	return &DeepSubTree{MutableTree: mutableTree}, nil
 }
 
 // Constructs a DSTNonExistenceProof using an ICS23 Non-Existence proof
@@ -36,7 +56,7 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.leftSiblingProof, err = tree.createExistenceProof(leftSibling.key)
+		dstNonExistenceProof.LeftSiblingProof, err = tree.createExistenceProof(leftSibling.key)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +66,7 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.rightSiblingProof, err = tree.createExistenceProof(rightSibling.key)
+		dstNonExistenceProof.RightSiblingProof, err = tree.createExistenceProof(rightSibling.key)
 		if err != nil {
 			return nil, err
 		}
@@ -106,19 +126,26 @@ func (node *Node) updateInnerNodeKey() {
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
 func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
-	if dst.root == nil {
-		rootNode, rootErr := dst.ndb.GetNode(rootHash)
-		if rootErr != nil {
-			return fmt.Errorf("could not set root of deep subtree: %w", rootErr)
-		}
-		dst.root = rootNode
-	} else if !bytes.Equal(dst.root.hash, rootHash) {
-		return fmt.Errorf(
-			"deep Subtree rootHash: %s does not match expected rootHash: %s",
-			dst.root.hash,
-			rootHash,
-		)
+	workingHash, err := dst.WorkingHash()
+	if err != nil {
+		return err
 	}
+	if !bytes.Equal(workingHash, rootHash) {
+		if dst.root == nil {
+			rootNode, rootErr := dst.ndb.GetNode(rootHash)
+			if rootErr != nil {
+				return fmt.Errorf("could not set root of deep subtree: %w", rootErr)
+			}
+			dst.root = rootNode
+		} else {
+			return fmt.Errorf(
+				"deep Subtree rootHash: %s does not match expected rootHash: %s",
+				workingHash,
+				rootHash,
+			)
+		}
+	}
+
 	nodes, traverseErr := dst.ndb.nodes()
 	if traverseErr != nil {
 		return fmt.Errorf("could not traverse nodedb: %w", traverseErr)
@@ -478,14 +505,14 @@ func (dst *DeepSubTree) AddNonExistenceProof(nonExistProof *DSTNonExistenceProof
 			return err
 		}
 	}
-	if nonExistProof.leftSiblingProof != nil {
-		err := dst.AddExistenceProof(nonExistProof.leftSiblingProof)
+	if nonExistProof.LeftSiblingProof != nil {
+		err := dst.AddExistenceProof(nonExistProof.LeftSiblingProof)
 		if err != nil {
 			return err
 		}
 	}
-	if nonExistProof.rightSiblingProof != nil {
-		err := dst.AddExistenceProof(nonExistProof.rightSiblingProof)
+	if nonExistProof.RightSiblingProof != nil {
+		err := dst.AddExistenceProof(nonExistProof.RightSiblingProof)
 		if err != nil {
 			return err
 		}

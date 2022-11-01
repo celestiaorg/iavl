@@ -1,11 +1,51 @@
 package iavl
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	db "github.com/tendermint/tm-db"
 )
+
+// Returns whether given trees have equal hashes
+func haveEqualRoots(tree1 *MutableTree, tree2 *MutableTree) (bool, error) {
+	rootHash, err := tree1.WorkingHash()
+	if err != nil {
+		return false, err
+	}
+
+	treeWorkingHash, err := tree2.WorkingHash()
+	if err != nil {
+		return false, err
+	}
+
+	// Check root hashes are equal
+	return bytes.Equal(rootHash, treeWorkingHash), nil
+}
+
+// Tests creating an empty Deep Subtree
+func TestEmptyDeepSubtree(t *testing.T) {
+	require := require.New(t)
+	getTree := func() *MutableTree {
+		tree, err := getTestTree(0)
+		require.NoError(err)
+		return tree
+	}
+
+	tree := getTree()
+	rootHash, err := tree.WorkingHash()
+	require.NoError(err)
+
+	dst, err := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
+	require.NoError(err)
+	err = dst.BuildTree(rootHash)
+	require.NoError(err)
+
+	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+	require.NoError(err)
+	require.True(areEqual)
+}
 
 // Tests creating a Deep Subtree step by step
 // as a full IAVL tree and checks if roots are equal
@@ -27,11 +67,11 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	}
 
 	tree := getTree()
-	rootHash := tree.root.hash
-
-	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+	rootHash, err := tree.WorkingHash()
 	require.NoError(err)
-	dst := DeepSubTree{mutableTree}
+
+	dst, err := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
+	require.NoError(err)
 
 	// insert key/value pairs in tree
 	allkeys := [][]byte{
@@ -49,8 +89,9 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 		require.NoError(err)
 	}
 
-	// Check root hashes are equal
-	require.Equal(dst.root.hash, tree.root.hash)
+	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+	require.NoError(err)
+	require.True(areEqual)
 }
 
 // Tests updating the deepsubtree returns the
@@ -84,7 +125,8 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 
 	for _, subsetKeys := range testCases {
 		tree := getTree()
-		rootHash := tree.root.hash
+		rootHash, err := tree.WorkingHash()
+		require.NoError(err)
 		mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
 		require.NoError(err)
 		dst := DeepSubTree{mutableTree}
@@ -98,8 +140,9 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		require.NoError(err)
 		dst.SaveVersion()
 
-		// Check root hashes are equal
-		require.Equal(dst.root.hash, tree.root.hash)
+		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+		require.NoError(err)
+		require.True(areEqual)
 
 		values := [][]byte{{10}, {20}}
 		for i, subsetKey := range subsetKeys {
@@ -109,8 +152,9 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 			tree.SaveVersion()
 		}
 
-		// Check root hashes are equal
-		require.Equal(dst.root.hash, tree.root.hash)
+		areEqual, err = haveEqualRoots(dst.MutableTree, tree)
+		require.NoError(err)
+		require.True(areEqual)
 	}
 }
 
@@ -134,7 +178,8 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	subsetKeys := [][]byte{
 		[]byte("b"),
 	}
-	rootHash := tree.root.hash
+	rootHash, err := tree.WorkingHash()
+	require.NoError(err)
 	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
 	require.NoError(err)
 	dst := DeepSubTree{mutableTree}
@@ -164,8 +209,9 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	}
 	dst.SaveVersion()
 
-	// Check root hashes are equal
-	require.Equal(dst.root.hash, tree.root.hash)
+	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+	require.NoError(err)
+	require.True(areEqual)
 
 	require.Equal(len(keysToAdd), len(valuesToAdd))
 	// Add all the keys we intend to add and check root hashes stay equal
@@ -174,13 +220,16 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		valueToAdd := valuesToAdd[i]
 		dst.Set(keyToAdd, valueToAdd)
 		dst.SaveVersion()
-		err = dst.BuildTree(dst.root.hash)
+		rootHash, err := dst.WorkingHash()
+		require.NoError(err)
+		err = dst.BuildTree(rootHash)
 		require.NoError(err)
 		tree.Set(keyToAdd, valueToAdd)
 		tree.SaveVersion()
 
-		// Check root hashes are equal
-		require.Equal(dst.root.hash, tree.root.hash)
+		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+		require.NoError(err)
+		require.True(areEqual)
 	}
 
 	// Delete all the keys we added and check root hashes stay equal
@@ -188,12 +237,15 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		keyToAdd := keysToAdd[i]
 		dst.Remove(keyToAdd)
 		dst.SaveVersion()
-		err = dst.BuildTree(dst.root.hash)
+		rootHash, err := dst.WorkingHash()
+		require.NoError(err)
+		err = dst.BuildTree(rootHash)
 		require.NoError(err)
 		tree.Remove(keyToAdd)
 		tree.SaveVersion()
 
-		// Check root hashes are equal
-		require.Equal(dst.root.hash, tree.root.hash)
+		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+		require.NoError(err)
+		require.True(areEqual)
 	}
 }

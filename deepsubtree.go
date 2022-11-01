@@ -75,11 +75,7 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 	if err != nil {
 		return updated, err
 	}
-	hashErr := recomputeHash(dst.root)
-	if hashErr != nil {
-		return updated, hashErr
-	}
-	return updated, nil
+	return updated, recomputeHash(dst.root)
 }
 
 func recomputeHash(node *Node) error {

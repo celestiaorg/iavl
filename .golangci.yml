@@ -12,6 +12,7 @@ linters:
     - errcheck
     - exportloopref
     - goconst
+    - gocritic
     - gofumpt
     - gosec
     - gosimple
@@ -27,6 +28,7 @@ linters:
     - typecheck
     - unconvert
     - unparam
+    - unused
 
 linters-settings:
   nolintlint:

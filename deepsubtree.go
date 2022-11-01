@@ -81,10 +81,7 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 func recomputeHash(node *Node) error {
 	node.hash = nil
 	_, err := node._hash()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // Helper method for set to traverse and find the node with given key

@@ -140,7 +140,7 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 		} else {
 			return fmt.Errorf(
 				"deep Subtree rootHash: %s does not match expected rootHash: %s",
-				dst.root.hash,
+				workingHash,
 				rootHash,
 			)
 		}

@@ -8,8 +8,7 @@ import (
 	"strings"
 
 	ics23 "github.com/confio/ics23/go"
-	dbm "github.com/cosmos/cosmos-db"
-	"github.com/cosmos/iavl/fastnode"
+	dbm "github.com/tendermint/tm-db"
 )
 
 // Represents a IAVL Deep Subtree that can contain
@@ -34,7 +33,7 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 		orphans:                  map[string]int64{},
 		versions:                 map[int64]bool{},
 		allRootLoaded:            false,
-		unsavedFastNodeAdditions: make(map[string]*fastnode.Node),
+		unsavedFastNodeAdditions: make(map[string]*FastNode),
 		unsavedFastNodeRemovals:  make(map[string]interface{}),
 		ndb:                      ndb,
 		skipFastStorageUpgrade:   skipFastStorageUpgrade,
@@ -56,7 +55,7 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.LeftSiblingProof, err = tree.createExistenceProof(leftSibling.key)
+		dstNonExistenceProof.LeftSiblingProof, err = createExistenceProof(tree.ImmutableTree, leftSibling.key)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +65,7 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.RightSiblingProof, err = tree.createExistenceProof(rightSibling.key)
+		dstNonExistenceProof.RightSiblingProof, err = createExistenceProof(tree.ImmutableTree, rightSibling.key)
 		if err != nil {
 			return nil, err
 		}
@@ -198,23 +197,23 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 			// Create a new inner node with the left node as a new leaf node with
 			// given key and right node as the existing leaf node
 			return &Node{
-				key:           node.key,
-				subtreeHeight: 1,
-				size:          2,
-				leftNode:      NewNode(key, value, version),
-				rightNode:     node,
-				version:       version,
+				key:       node.key,
+				height:    1,
+				size:      2,
+				leftNode:  NewNode(key, value, version),
+				rightNode: node,
+				version:   version,
 			}, false, nil
 		case 1:
 			// Create a new inner node with the left node as the existing leaf node
 			// and right node as a new leaf node with given key
 			return &Node{
-				key:           key,
-				subtreeHeight: 1,
-				size:          2,
-				leftNode:      node,
-				rightNode:     NewNode(key, value, version),
-				version:       version,
+				key:       key,
+				height:    1,
+				size:      2,
+				leftNode:  node,
+				rightNode: NewNode(key, value, version),
+				version:   version,
 			}, false, nil
 		default:
 			// Key already exists so create a new leaf node with updated value

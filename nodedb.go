@@ -973,7 +973,6 @@ func (ndb *nodeDB) leafNodes() ([]*Node, error) {
 	return leaves, nil
 }
 
-// nolint: unused
 func (ndb *nodeDB) nodes() ([]*Node, error) {
 	nodes := []*Node{}
 

@@ -7,6 +7,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Tests creating an empty Deep Subtree
+func TestEmptyDeepSubtree(t *testing.T) {
+	require := require.New(t)
+	getTree := func() *MutableTree {
+		tree, err := getTestTree(0)
+		require.NoError(err)
+		return tree
+	}
+
+	tree := getTree()
+	rootHash, err := tree.WorkingHash()
+	require.NoError(err)
+
+	dst, err := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
+	require.NoError(err)
+	err = dst.BuildTree(rootHash)
+	require.NoError(err)
+
+	treeWorkingHash, err := tree.WorkingHash()
+	require.NoError(err)
+	// Check root hashes are equal
+	require.Equal(rootHash, treeWorkingHash)
+}
+
 // Tests creating a Deep Subtree step by step
 // as a full IAVL tree and checks if roots are equal
 func TestDeepSubtreeStepByStep(t *testing.T) {

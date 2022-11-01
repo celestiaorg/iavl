@@ -14,7 +14,8 @@ linters:
     - exportloopref
     - goconst
     - gocritic
-    - gofumpt
+    - gofmt
+    - goimports
     - gosec
     - gosimple
     - govet
@@ -31,12 +32,7 @@ linters:
     - unconvert
     - unparam
     - unused
-
-linters-settings:
-  nolintlint:
-    allow-leading-space: true
-    require-explanation: false
-    require-specific: true
+    # - wsl
 
 issues:
   exclude-rules:

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	ics23 "github.com/confio/ics23/go"
+	dbm "github.com/tendermint/tm-db"
 )
 
 // Represents a IAVL Deep Subtree that can contain
@@ -20,6 +21,23 @@ type DSTNonExistenceProof struct {
 	*ics23.NonExistenceProof
 	LeftSiblingProof  *ics23.ExistenceProof
 	RightSiblingProof *ics23.ExistenceProof
+}
+
+// NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
+func NewDeepSubTree(db dbm.DB, cacheSize int, version int64) (*DeepSubTree, error) {
+	ndb := newNodeDB(db, cacheSize, nil)
+	head := &ImmutableTree{ndb: ndb, version: version}
+	mutableTree := MutableTree{
+		ImmutableTree:            head,
+		lastSaved:                head.clone(),
+		orphans:                  map[string]int64{},
+		versions:                 map[int64]bool{},
+		allRootLoaded:            false,
+		unsavedFastNodeAdditions: make(map[string]*FastNode),
+		unsavedFastNodeRemovals:  make(map[string]interface{}),
+		ndb:                      ndb,
+	}
+	return &DeepSubTree{MutableTree: &mutableTree}, nil
 }
 
 // Constructs a DSTNonExistenceProof using an ICS23 Non-Existence proof

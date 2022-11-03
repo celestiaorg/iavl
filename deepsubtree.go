@@ -288,7 +288,10 @@ func fromLeafOp(lop *ics23.LeafOp, key, value []byte) (*Node, error) {
 		version: version,
 	}
 
-	_, _ = node._hash()
+	_, err = node._hash()
+	if err != nil {
+		return nil, err
+	}
 
 	return node, nil
 }

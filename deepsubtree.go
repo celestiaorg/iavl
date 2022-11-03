@@ -16,7 +16,7 @@ type DeepSubTree struct {
 	*MutableTree
 }
 
-// Traverses in the nodes in the NodeDB in the Deep Subtree
+// Traverses the nodes in the NodeDB that are part of Deep Subtree
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
 func (dst *DeepSubTree) BuildTree(rootHash []byte) error {

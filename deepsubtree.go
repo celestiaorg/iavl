@@ -73,8 +73,8 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 
 // Link the given node if it is not linked yet
 // If already linked, return an error in case connection was made incorrectly
-// Note: GetNode returns nil if the hash passed into it is empty which is expected
-// and err does not need to be checked
+// Note: GetNode returns nil if the node with the hash passed into it does not exist
+// which is expected with a deep subtree.
 func (dst *DeepSubTree) linkNode(node *Node) error {
 	if len(node.leftHash) > 0 {
 		if node.leftNode == nil {

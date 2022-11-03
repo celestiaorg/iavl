@@ -10,6 +10,11 @@ import (
 	ics23 "github.com/confio/ics23/go"
 )
 
+const (
+	// lengthByte is the length prefix prepended to each of the sha256 sub-hashes
+	lengthByte byte = 0x20
+)
+
 // Represents a IAVL Deep Subtree that can contain
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
@@ -310,9 +315,6 @@ func fromInnerOp(iop *ics23.InnerOp, prevHash []byte) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// lengthByte is the length prefix prepended to each of the sha256 sub-hashes
-	var lengthByte byte = 0x20
 
 	b, err := r.ReadByte()
 	if err != nil {

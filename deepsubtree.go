@@ -11,6 +11,11 @@ import (
 	dbm "github.com/tendermint/tm-db"
 )
 
+const (
+	// lengthByte is the length prefix prepended to each of the sha256 sub-hashes
+	lengthByte byte = 0x20
+)
+
 // Represents a IAVL Deep Subtree that can contain
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
@@ -121,7 +126,7 @@ func (node *Node) updateInnerNodeKey() {
 	}
 }
 
-// Traverses in the nodes in the NodeDB in the Deep Subtree
+// Traverses the nodes in the NodeDB that are part of Deep Subtree
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
 func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
@@ -151,12 +156,13 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 	}
 	// Traverse through nodes and link them correctly
 	for _, node := range nodes {
-		pnode, _ := dst.ndb.GetNode(node.hash)
-		if len(pnode.leftHash) > 0 && pnode.leftNode == nil {
-			pnode.leftNode, _ = dst.ndb.GetNode(pnode.leftHash)
+		pnode, err := dst.ndb.GetNode(node.hash)
+		if err != nil {
+			return err
 		}
-		if len(pnode.rightHash) > 0 && pnode.rightNode == nil {
-			pnode.rightNode, _ = dst.ndb.GetNode(pnode.rightHash)
+		err = dst.linkNode(pnode)
+		if err != nil {
+			return err
 		}
 	}
 	// Now that nodes are linked correctly, traverse again
@@ -165,7 +171,37 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 		pnode, _ := dst.ndb.GetNode(node.hash)
 		pnode.updateInnerNodeKey()
 	}
+}
 
+// Link the given node if it is not linked yet
+// If already linked, return an error in case connection was made incorrectly
+// Note: GetNode returns nil if the node with the hash passed into it does not exist
+// which is expected with a deep subtree.
+func (dst *DeepSubTree) linkNode(node *Node) error {
+	if len(node.leftHash) > 0 {
+		if node.leftNode == nil {
+			node.leftNode, _ = dst.ndb.GetNode(node.leftHash)
+		} else if !bytes.Equal(node.leftNode.hash, node.leftHash) {
+			return fmt.Errorf(
+				"for node: %s, leftNode hash: %s and node leftHash: %s do not match",
+				node.hash,
+				node.leftNode.hash,
+				node.leftHash,
+			)
+		}
+	}
+	if len(node.rightHash) > 0 {
+		if node.rightNode == nil {
+			node.rightNode, _ = dst.ndb.GetNode(node.rightHash)
+		} else if !bytes.Equal(node.rightNode.hash, node.rightHash) {
+			return fmt.Errorf(
+				"for node: %s, rightNode hash: %s and node rightHash: %s do not match",
+				node.hash,
+				node.rightNode.hash,
+				node.rightHash,
+			)
+		}
+	}
 	return nil
 }
 
@@ -578,7 +614,10 @@ func fromLeafOp(lop *ics23.LeafOp, key, value []byte) (*Node, error) {
 		version: version,
 	}
 
-	_, _ = node._hash()
+	_, err = node._hash()
+	if err != nil {
+		return nil, err
+	}
 
 	return node, nil
 }
@@ -597,9 +636,6 @@ func fromInnerOp(iop *ics23.InnerOp, prevHash []byte) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// lengthByte is the length prefix prepended to each of the sha256 sub-hashes
-	var lengthByte byte = 0x20
 
 	b, err := r.ReadByte()
 	if err != nil {

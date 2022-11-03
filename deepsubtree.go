@@ -171,6 +171,8 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 		pnode, _ := dst.ndb.GetNode(node.hash)
 		pnode.updateInnerNodeKey()
 	}
+
+	return nil
 }
 
 // Link the given node if it is not linked yet

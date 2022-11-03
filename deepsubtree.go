@@ -42,20 +42,23 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 	if traverseErr != nil {
 		return fmt.Errorf("could not traverse nodedb: %w", traverseErr)
 	}
-	// Traverse through nodes and link them correctly
 	for _, node := range nodes {
-		pnode, _ := dst.ndb.GetNode(node.hash)
-		if len(pnode.leftHash) > 0 && pnode.leftNode == nil {
-			pnode.leftNode, _ = dst.ndb.GetNode(pnode.leftHash)
+		pnode, err := dst.ndb.GetNode(node.hash)
+		if err != nil {
+			return err
 		}
-		if len(pnode.rightHash) > 0 && pnode.rightNode == nil {
-			pnode.rightNode, _ = dst.ndb.GetNode(pnode.rightHash)
+		err = dst.linkNode(pnode)
+		if err != nil {
+			return err
 		}
 	}
 	// Now that nodes are linked correctly, traverse again
 	// and set their keys correctly
 	for _, node := range nodes {
-		pnode, _ := dst.ndb.GetNode(node.hash)
+		pnode, err := dst.ndb.GetNode(node.hash)
+		if err != nil {
+			return err
+		}
 		if pnode.leftNode != nil {
 			pnode.key = pnode.leftNode.getHighestKey()
 		}
@@ -65,6 +68,38 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 		}
 	}
 
+	return nil
+}
+
+// Link the given node if it is not linked yet
+// If already linked, return an error in case connection was made incorrectly
+// Note: GetNode returns nil if the hash passed into it is empty which is expected
+// and err does not need to be checked
+func (dst *DeepSubTree) linkNode(node *Node) error {
+	if len(node.leftHash) > 0 {
+		if node.leftNode == nil {
+			node.leftNode, _ = dst.ndb.GetNode(node.leftHash)
+		} else if !bytes.Equal(node.leftNode.hash, node.leftHash) {
+			return fmt.Errorf(
+				"for node: %s, leftNode hash: %s and node leftHash: %s do not match",
+				node.hash,
+				node.leftNode.hash,
+				node.leftHash,
+			)
+		}
+	}
+	if len(node.rightHash) > 0 {
+		if node.rightNode == nil {
+			node.rightNode, _ = dst.ndb.GetNode(node.rightHash)
+		} else if !bytes.Equal(node.rightNode.hash, node.rightHash) {
+			return fmt.Errorf(
+				"for node: %s, rightNode hash: %s and node rightHash: %s do not match",
+				node.hash,
+				node.rightNode.hash,
+				node.rightHash,
+			)
+		}
+	}
 	return nil
 }
 

@@ -37,8 +37,7 @@ func TestEmptyDeepSubtree(t *testing.T) {
 	rootHash, err := tree.WorkingHash()
 	require.NoError(err)
 
-	dst, err := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
-	require.NoError(err)
+	dst := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
 	err = dst.BuildTree(rootHash)
 	require.NoError(err)
 
@@ -70,8 +69,7 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	rootHash, err := tree.WorkingHash()
 	require.NoError(err)
 
-	dst, err := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
-	require.NoError(err)
+	dst := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
 
 	// insert key/value pairs in tree
 	allkeys := [][]byte{

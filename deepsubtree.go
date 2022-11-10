@@ -302,10 +302,10 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	orphans := dst.prepareOrphansSlice()
 	node.persisted = false
 	newNode, err := dst.balance(node, &orphans)
-	node.persisted = true
 	if err != nil {
 		return nil, false, err
 	}
+	node.persisted = true
 	return newNode, updated, err
 }
 
@@ -522,6 +522,7 @@ func (node *Node) getLowestKey() []byte {
 	return lowestKey
 }
 
+// Adds nodes associated to the given ICS-23 existence proof to the underlying deep subtree
 func (dst *DeepSubTree) AddExistenceProof(existProof *ics23.ExistenceProof) error {
 	err := dst.addExistenceProof(existProof)
 	if err != nil {
@@ -530,6 +531,7 @@ func (dst *DeepSubTree) AddExistenceProof(existProof *ics23.ExistenceProof) erro
 	return dst.ndb.Commit()
 }
 
+// Adds nodes associated to the given DST non-existence proof to the underlying deep subtree
 func (dst *DeepSubTree) AddNonExistenceProof(nonExistProof *DSTNonExistenceProof) error {
 	if nonExistProof.Left != nil {
 		err := dst.AddExistenceProof(nonExistProof.Left)

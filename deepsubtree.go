@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	ics23 "github.com/confio/ics23/go"
+	dbm "github.com/tendermint/tm-db"
 )
 
 const (
@@ -21,27 +22,142 @@ type DeepSubTree struct {
 	*MutableTree
 }
 
+// Represents a Non-Existence proof for a Deep Subtree.
+// Includes existence proofs for siblings of nodes in
+// the ICS23 non-existence proof.
+type DSTNonExistenceProof struct {
+	*ics23.NonExistenceProof
+	LeftSiblingProof  *ics23.ExistenceProof
+	RightSiblingProof *ics23.ExistenceProof
+}
+
+// NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
+func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, version int64) *DeepSubTree {
+	ndb := newNodeDB(db, cacheSize, nil)
+	head := &ImmutableTree{ndb: ndb, version: version}
+	mutableTree := &MutableTree{
+		ImmutableTree:            head,
+		lastSaved:                head.clone(),
+		orphans:                  map[string]int64{},
+		versions:                 map[int64]bool{},
+		allRootLoaded:            false,
+		unsavedFastNodeAdditions: make(map[string]*FastNode),
+		unsavedFastNodeRemovals:  make(map[string]interface{}),
+		ndb:                      ndb,
+		skipFastStorageUpgrade:   skipFastStorageUpgrade,
+	}
+	return &DeepSubTree{MutableTree: mutableTree}
+}
+
+// Constructs a DSTNonExistenceProof using an ICS23 Non-Existence proof
+// and sibling node proofs. Returns the constructed DSTNonExistenceProof.
+func ConvertToDSTNonExistenceProof(
+	tree *MutableTree,
+	nonExistenceProof *ics23.NonExistenceProof,
+) (*DSTNonExistenceProof, error) {
+	dstNonExistenceProof := DSTNonExistenceProof{
+		NonExistenceProof: nonExistenceProof,
+	}
+	if nonExistenceProof.Left != nil {
+		leftSibling, err := tree.GetSiblingNode(nonExistenceProof.Left.Key)
+		if err != nil {
+			return nil, err
+		}
+		dstNonExistenceProof.LeftSiblingProof, err = createExistenceProof(tree.ImmutableTree, leftSibling.key)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if nonExistenceProof.Right != nil {
+		rightSibling, err := tree.GetSiblingNode(nonExistenceProof.Right.Key)
+		if err != nil {
+			return nil, err
+		}
+		dstNonExistenceProof.RightSiblingProof, err = createExistenceProof(tree.ImmutableTree, rightSibling.key)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &dstNonExistenceProof, nil
+}
+
+// Returns the sibling node of a leaf node with given key
+func (tree *ImmutableTree) GetSiblingNode(key []byte) (*Node, error) {
+	siblingNode, err := tree.recursiveGetSiblingNode(tree.root, key)
+	if err != nil {
+		return nil, err
+	}
+	return siblingNode, nil
+}
+
+// Recursively iterates the tree to return the sibling node of a leaf node with given key
+func (tree *ImmutableTree) recursiveGetSiblingNode(node *Node, key []byte) (*Node, error) {
+	if node == nil || node.isLeaf() {
+		return nil, nil
+	}
+	leftNode, err := node.getLeftNode(tree)
+	if err != nil {
+		return nil, err
+	}
+	rightNode, err := node.getRightNode(tree)
+	if err != nil {
+		return nil, err
+	}
+	if leftNode != nil && leftNode.isLeaf() && bytes.Equal(leftNode.key, key) {
+		return rightNode, nil
+	}
+	if rightNode != nil && rightNode.isLeaf() && bytes.Equal(rightNode.key, key) {
+		return leftNode, nil
+	}
+
+	siblingNode, err := tree.recursiveGetSiblingNode(leftNode, key)
+	if err != nil {
+		return nil, err
+	}
+	if siblingNode != nil {
+		return siblingNode, nil
+	}
+	return tree.recursiveGetSiblingNode(rightNode, key)
+}
+
+func (node *Node) updateInnerNodeKey() {
+	if node.leftNode != nil {
+		node.key = node.leftNode.getHighestKey()
+	}
+	if node.rightNode != nil {
+		node.key = node.rightNode.getLowestKey()
+	}
+}
+
 // Traverses the nodes in the NodeDB that are part of Deep Subtree
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
 func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
-	if dst.root == nil {
+	workingHash, err := dst.WorkingHash()
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(workingHash, rootHash) {
+		if dst.root != nil {
+			return fmt.Errorf(
+				"deep Subtree rootHash: %s does not match expected rootHash: %s",
+				workingHash,
+				rootHash,
+			)
+		}
 		rootNode, rootErr := dst.ndb.GetNode(rootHash)
 		if rootErr != nil {
 			return fmt.Errorf("could not set root of deep subtree: %w", rootErr)
 		}
 		dst.root = rootNode
-	} else if !bytes.Equal(dst.root.hash, rootHash) {
-		return fmt.Errorf(
-			"deep Subtree rootHash: %s does not match expected rootHash: %s",
-			dst.root.hash,
-			rootHash,
-		)
+
 	}
+
 	nodes, traverseErr := dst.ndb.nodes()
 	if traverseErr != nil {
 		return fmt.Errorf("could not traverse nodedb: %w", traverseErr)
 	}
+	// Traverse through nodes and link them correctly
 	for _, node := range nodes {
 		pnode, err := dst.ndb.GetNode(node.hash)
 		if err != nil {
@@ -55,17 +171,8 @@ func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
 	// Now that nodes are linked correctly, traverse again
 	// and set their keys correctly
 	for _, node := range nodes {
-		pnode, err := dst.ndb.GetNode(node.hash)
-		if err != nil {
-			return err
-		}
-		if pnode.leftNode != nil {
-			pnode.key = pnode.leftNode.getHighestKey()
-		}
-
-		if pnode.rightNode != nil {
-			pnode.key = pnode.rightNode.getLowestKey()
-		}
+		pnode, _ := dst.ndb.GetNode(node.hash)
+		pnode.updateInnerNodeKey()
 	}
 
 	return nil
@@ -118,12 +225,6 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 	return updated, recomputeHash(dst.root)
 }
 
-func recomputeHash(node *Node) error {
-	node.hash = nil
-	_, err := node._hash()
-	return err
-}
-
 // Helper method for set to traverse and find the node with given key
 // recursively.
 func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
@@ -132,10 +233,33 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	version := dst.version + 1
 
 	if node.isLeaf() {
-		if !bytes.Equal(key, node.key) {
-			return nil, false, fmt.Errorf("adding new keys is not supported")
+		switch bytes.Compare(key, node.key) {
+		case -1:
+			// Create a new inner node with the left node as a new leaf node with
+			// given key and right node as the existing leaf node
+			return &Node{
+				key:       node.key,
+				height:    1,
+				size:      2,
+				leftNode:  NewNode(key, value, version),
+				rightNode: node,
+				version:   version,
+			}, false, nil
+		case 1:
+			// Create a new inner node with the left node as the existing leaf node
+			// and right node as a new leaf node with given key
+			return &Node{
+				key:       key,
+				height:    1,
+				size:      2,
+				leftNode:  node,
+				rightNode: NewNode(key, value, version),
+				version:   version,
+			}, false, nil
+		default:
+			// Key already exists so create a new leaf node with updated value
+			return NewNode(key, value, version), true, nil
 		}
-		return NewNode(key, value, version), true, nil
 	}
 	// Otherwise, node is inner node
 	node.version = version
@@ -168,7 +292,158 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	default:
 		return nil, false, fmt.Errorf("inner node does not have key set correctly")
 	}
-	return node, updated, nil
+	if updated {
+		return node, updated, nil
+	}
+	err = node.calcHeightAndSize(dst.ImmutableTree)
+	if err != nil {
+		return nil, false, err
+	}
+	orphans := dst.prepareOrphansSlice()
+	node.persisted = false
+	newNode, err := dst.balance(node, &orphans)
+	if err != nil {
+		return nil, false, err
+	}
+	node.persisted = true
+	return newNode, updated, err
+}
+
+// Remove tries to remove a key from the tree and if removed, returns its
+// value, nodes orphaned and 'true'.
+func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err error) {
+	if dst.root == nil {
+		return nil, false, nil
+	}
+	newRootHash, newRoot, value, err := dst.recursiveRemove(dst.root, key)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if !dst.skipFastStorageUpgrade {
+		dst.addUnsavedRemoval(key)
+	}
+
+	if newRoot == nil && newRootHash != nil {
+		newRoot, err = dst.ndb.GetNode(newRootHash)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	dst.root = newRoot
+
+	return value, true, nil
+}
+
+// removes the node corresponding to the passed key and balances the tree.
+// It returns:
+// - the hash of the new node (or nil if the node is the one removed)
+// - the node that replaces the orig. node after remove
+// - the removed value
+func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte, newSelf *Node, newValue []byte, err error) {
+	version := dst.version + 1
+
+	if node.isLeaf() {
+		if bytes.Equal(key, node.key) {
+			return nil, nil, nil, nil
+		}
+		return node.hash, node, nil, nil
+	}
+
+	// Otherwise, node is inner node
+	node.version = version
+	leftNode, rightNode := node.leftNode, node.rightNode
+	if leftNode == nil && rightNode == nil {
+		return nil, nil, nil, fmt.Errorf("inner node must have at least one child node set")
+	}
+	compare := bytes.Compare(key, node.key)
+
+	// node.key < key; we go to the left to find the key:
+	if leftNode != nil && (compare < 0 || rightNode == nil) {
+		leftNode, err := node.getLeftNode(dst.ImmutableTree)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		newLeftHash, newLeftNode, newKey, err := dst.recursiveRemove(leftNode, key)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		if newLeftHash == nil && newLeftNode == nil { // left node held value, was removed
+			return node.rightHash, node.rightNode, node.key, nil
+		}
+
+		newNode, err := node.clone(version)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		newNode.leftHash, newNode.leftNode = newLeftHash, newLeftNode
+		err = newNode.calcHeightAndSize(dst.ImmutableTree)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		orphans := dst.prepareOrphansSlice()
+		newNode, err = dst.balance(newNode, &orphans)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return newNode.hash, newNode, newKey, nil
+	} else if rightNode != nil && (compare >= 0 || leftNode == nil) {
+		newRightHash, newRightNode, newKey, err := dst.recursiveRemove(rightNode, key)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if newRightHash == nil && newRightNode == nil { // right node held value, was removed
+			return node.leftHash, node.leftNode, nil, nil
+		}
+
+		newNode, err := node.clone(version)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		newNode.rightHash, newNode.rightNode = newRightHash, newRightNode
+		if newKey != nil {
+			newNode.key = newKey
+		}
+		err = newNode.calcHeightAndSize(dst.ImmutableTree)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		orphans := dst.prepareOrphansSlice()
+		newNode, err = dst.balance(newNode, &orphans)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return newNode.hash, newNode, nil, nil
+	}
+	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
+}
+
+func recomputeHash(node *Node) error {
+	if node.leftHash == nil && node.leftNode != nil {
+		leftHash, err := node.leftNode._hash()
+		if err != nil {
+			return err
+		}
+		node.leftHash = leftHash
+	}
+	if node.rightHash == nil && node.rightNode != nil {
+		rightHash, err := node.rightNode._hash()
+		if err != nil {
+			return err
+		}
+		node.rightHash = rightHash
+	}
+	node.hash = nil
+	_, err := node._hash()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // nolint: unused
@@ -247,26 +522,42 @@ func (node *Node) getLowestKey() []byte {
 	return lowestKey
 }
 
-func (dst *DeepSubTree) AddProof(proof *ics23.CommitmentProof) error {
-	proof = ics23.Decompress(proof)
+// Adds nodes associated to the given ICS-23 existence proof to the underlying deep subtree
+func (dst *DeepSubTree) AddExistenceProof(existProof *ics23.ExistenceProof) error {
+	err := dst.addExistenceProof(existProof)
+	if err != nil {
+		return err
+	}
+	return dst.ndb.Commit()
+}
 
-	if exist := proof.GetExist(); exist != nil {
-		err := dst.addExistenceProof(exist)
-		if err != nil {
-			return err
-		}
-	} else if nonExist := proof.GetNonexist(); nonExist != nil {
-		err := dst.addExistenceProof(nonExist.Left)
-		if err != nil {
-			return err
-		}
-		err = dst.addExistenceProof(nonExist.Right)
+// Adds nodes associated to the given DST non-existence proof to the underlying deep subtree
+func (dst *DeepSubTree) AddNonExistenceProof(nonExistProof *DSTNonExistenceProof) error {
+	if nonExistProof.Left != nil {
+		err := dst.AddExistenceProof(nonExistProof.Left)
 		if err != nil {
 			return err
 		}
 	}
-
-	return dst.ndb.Commit()
+	if nonExistProof.Right != nil {
+		err := dst.AddExistenceProof(nonExistProof.Right)
+		if err != nil {
+			return err
+		}
+	}
+	if nonExistProof.LeftSiblingProof != nil {
+		err := dst.AddExistenceProof(nonExistProof.LeftSiblingProof)
+		if err != nil {
+			return err
+		}
+	}
+	if nonExistProof.RightSiblingProof != nil {
+		err := dst.AddExistenceProof(nonExistProof.RightSiblingProof)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (dst *DeepSubTree) addExistenceProof(proof *ics23.ExistenceProof) error {

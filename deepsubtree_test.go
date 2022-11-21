@@ -348,13 +348,12 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if numKeys > 0 {
 					// Set key-value pair in DST
 					dst.Set(keyToAdd, value)
-					dst.SaveVersion()
-
 					rootHash, err := dst.WorkingHash()
 					require.NoError(err)
 					err = dst.BuildTree(rootHash)
 					require.NoError(err)
 				}
+				dst.SaveVersion()
 
 				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 				require.NoError(err)

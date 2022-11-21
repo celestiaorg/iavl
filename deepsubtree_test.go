@@ -314,7 +314,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if keyToAdd == nil {
 					continue
 				}
-
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
 				rootHash := []byte(nil)
@@ -327,8 +326,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 					dst.AddNonExistenceProof(dst_nonExistenceProof)
 					require.NoError(err)
 					dst.BuildTree(rootHash)
-					require.NoError(err)
-					dst.SaveVersion()
 
 					// Set key-value pair in IAVL tree
 					tree.Set(keyToAdd, value)

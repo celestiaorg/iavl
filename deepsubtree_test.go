@@ -301,8 +301,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 				continue
 			}
 			op := op(int(b) % int(Noop))
-			rootHash, err := tree.WorkingHash()
 			require.NoError(err)
+			numKeys := len(keys)
 			switch op {
 			case Set:
 				isNewKey, keyToAdd := key()
@@ -312,8 +312,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
-
-				if isNewKey {
+				rootHash := []byte(nil)
+				if isNewKey && numKeys > 0 {
 					// Add existence proof for new key
 					ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
 					require.NoError(err)
@@ -332,20 +332,27 @@ func FuzzBatchAddReverse(f *testing.F) {
 					// Set key-value pair in IAVL tree
 					tree.Set(keyToAdd, value)
 					tree.SaveVersion()
+					rootHash, err = tree.WorkingHash()
+					require.NoError(err)
+
 					ics23proof, err := tree.GetMembershipProof(keyToAdd)
 					require.NoError(err)
 					err = dst.AddExistenceProof(ics23proof.GetExist())
 					require.NoError(err)
+					err = dst.BuildTree(rootHash)
+					require.NoError(err)
 				}
 
-				// Set key-value pair in DST
-				dst.Set(keyToAdd, value)
-				dst.SaveVersion()
+				if numKeys > 0 {
+					// Set key-value pair in DST
+					dst.Set(keyToAdd, value)
+					dst.SaveVersion()
 
-				rootHash, err := dst.WorkingHash()
-				require.NoError(err)
-				err = dst.BuildTree(rootHash)
-				require.NoError(err)
+					rootHash, err := dst.WorkingHash()
+					require.NoError(err)
+					err = dst.BuildTree(rootHash)
+					require.NoError(err)
+				}
 
 				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 				require.NoError(err)

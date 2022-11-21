@@ -306,6 +306,12 @@ func FuzzBatchAddReverse(f *testing.F) {
 			switch op {
 			case Set:
 				isNewKey, keyToAdd := key()
+				if keyToAdd == nil {
+					continue
+				}
+
+				value := make([]byte, 32)
+				binary.BigEndian.PutUint64(value, uint64(i))
 
 				if isNewKey {
 					// Add existence proof for new key
@@ -318,11 +324,21 @@ func FuzzBatchAddReverse(f *testing.F) {
 					dst.BuildTree(rootHash)
 					require.NoError(err)
 					dst.SaveVersion()
+
+					// Set key-value pair in IAVL tree
+					tree.Set(keyToAdd, value)
+					tree.SaveVersion()
+				} else {
+					// Set key-value pair in IAVL tree
+					tree.Set(keyToAdd, value)
+					tree.SaveVersion()
+					ics23proof, err := tree.GetMembershipProof(keyToAdd)
+					require.NoError(err)
+					err = dst.AddExistenceProof(ics23proof.GetExist())
+					require.NoError(err)
 				}
 
 				// Set key-value pair in DST
-				value := make([]byte, 32)
-				binary.BigEndian.PutUint64(value, uint64(i))
 				dst.Set(keyToAdd, value)
 				dst.SaveVersion()
 
@@ -330,10 +346,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 				require.NoError(err)
 				err = dst.BuildTree(rootHash)
 				require.NoError(err)
-
-				// Set key-value pair in IAVL tree
-				tree.Set(keyToAdd, value)
-				tree.SaveVersion()
 
 				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 				require.NoError(err)

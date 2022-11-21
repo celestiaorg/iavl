@@ -2,10 +2,24 @@ package iavl
 
 import (
 	"bytes"
+	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	db "github.com/tendermint/tm-db"
+)
+
+type op int
+
+const (
+	Set op = iota
+	Remove
+	Noop
+)
+
+const (
+	cacheSize = math.MaxUint32
 )
 
 // Returns whether given trees have equal hashes
@@ -70,6 +84,7 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	require.NoError(err)
 
 	dst := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
+	require.NoError(err)
 
 	// insert key/value pairs in tree
 	allkeys := [][]byte{
@@ -246,4 +261,107 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		require.NoError(err)
 		require.True(areEqual)
 	}
+}
+
+func readByte(r *bytes.Reader) byte {
+	b, err := r.ReadByte()
+	if err != nil {
+		return 0
+	}
+	return b
+}
+
+func FuzzBatchAddReverse(f *testing.F) {
+	f.Fuzz(func(t *testing.T, input []byte) {
+		require := require.New(t)
+		if len(input) < 100 {
+			return
+		}
+		tree, err := getTestTree(cacheSize)
+		require.NoError(err)
+		dst := NewDeepSubTree(db.NewMemDB(), cacheSize, false, 0)
+		r := bytes.NewReader(input)
+		var keys [][]byte
+		// Generates random new key half times and an existing key for the other half times.
+		key := func() (isRandom bool, key []byte) {
+			if readByte(r) < math.MaxUint8/2 {
+				k := make([]byte, readByte(r)/2)
+				r.Read(k)
+				keys = append(keys, k)
+				return true, k
+			}
+			if len(keys) == 0 {
+				return false, nil
+			}
+			return false, keys[int(readByte(r))%len(keys)]
+		}
+		for i := 0; r.Len() != 0; i++ {
+			b, err := r.ReadByte()
+			if err != nil {
+				continue
+			}
+			op := op(int(b) % int(Noop))
+			rootHash, err := tree.WorkingHash()
+			require.NoError(err)
+			switch op {
+			case Set:
+				isNewKey, keyToAdd := key()
+
+				if isNewKey {
+					// Add existence proof for new key
+					ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
+					require.NoError(err)
+					dst_nonExistenceProof, err := ConvertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
+					require.NoError(err)
+					dst.AddNonExistenceProof(dst_nonExistenceProof)
+					require.NoError(err)
+					dst.BuildTree(rootHash)
+					require.NoError(err)
+					dst.SaveVersion()
+				}
+
+				// Set key-value pair in DST
+				value := make([]byte, 32)
+				binary.BigEndian.PutUint64(value, uint64(i))
+				dst.Set(keyToAdd, value)
+				dst.SaveVersion()
+
+				rootHash, err := dst.WorkingHash()
+				require.NoError(err)
+				err = dst.BuildTree(rootHash)
+				require.NoError(err)
+
+				// Set key-value pair in IAVL tree
+				tree.Set(keyToAdd, value)
+				tree.SaveVersion()
+
+				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+				require.NoError(err)
+				if !areEqual {
+					t.Error("Unequal roots for Deep subtree and IAVL tree")
+				}
+			case Remove:
+				isNewKey, keyToDelete := key()
+				if isNewKey {
+					// TODO: Add more information needed for Delete operation in Deep Subtree
+					require.NoError(nil)
+				}
+				dst.Remove(keyToDelete)
+				dst.SaveVersion()
+				rootHash, err := dst.WorkingHash()
+				require.NoError(err)
+				err = dst.BuildTree(rootHash)
+				require.NoError(err)
+				tree.Remove(keyToDelete)
+				tree.SaveVersion()
+
+				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+				require.NoError(err)
+				if !areEqual {
+					t.Error("Remove: Unequal roots for Deep subtree and IAVL tree")
+				}
+			}
+		}
+
+	})
 }

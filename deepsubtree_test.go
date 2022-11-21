@@ -316,7 +316,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 				}
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
-				rootHash := []byte(nil)
+				rootHash, err := dst.WorkingHash()
+				require.NoError(err)
 				if isNewKey && numKeys > 0 {
 					// Add existence proof for new key
 					ics23proof, err := tree.GetNonMembershipProof(keyToAdd)

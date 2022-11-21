@@ -140,7 +140,7 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		tree := getTree()
 		rootHash, err := tree.WorkingHash()
 		require.NoError(err)
-		mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+		mutableTree, err := NewMutableTree(db.NewMemDB(), 100, true)
 		require.NoError(err)
 		dst := DeepSubTree{mutableTree}
 		for _, subsetKey := range subsetKeys {
@@ -193,7 +193,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	}
 	rootHash, err := tree.WorkingHash()
 	require.NoError(err)
-	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, false)
+	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, true)
 	require.NoError(err)
 	dst := DeepSubTree{mutableTree}
 	for _, subsetKey := range subsetKeys {
@@ -277,16 +277,21 @@ func FuzzBatchAddReverse(f *testing.F) {
 		if len(input) < 100 {
 			return
 		}
-		tree, err := getTestTree(cacheSize)
+		tree, err := NewMutableTreeWithOpts(db.NewMemDB(), cacheSize, nil, true)
 		require.NoError(err)
-		dst := NewDeepSubTree(db.NewMemDB(), cacheSize, false, 0)
+		dst := NewDeepSubTree(db.NewMemDB(), cacheSize, true, 0)
 		r := bytes.NewReader(input)
 		var keys [][]byte
 		// Generates random new key half times and an existing key for the other half times.
-		key := func() (isRandom bool, key []byte) {
+		key := func(tree *ImmutableTree) (isRandom bool, key []byte) {
 			if readByte(r) < math.MaxUint8/2 {
 				k := make([]byte, readByte(r)/2)
 				r.Read(k)
+				val, err := tree.Get(k)
+				require.NoError(err)
+				if val != nil {
+					return false, nil
+				}
 				keys = append(keys, k)
 				return true, k
 			}
@@ -305,7 +310,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 			numKeys := len(keys)
 			switch op {
 			case Set:
-				isNewKey, keyToAdd := key()
+				isNewKey, keyToAdd := key(tree.ImmutableTree)
 				if keyToAdd == nil {
 					continue
 				}
@@ -360,7 +365,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 					t.Error("Unequal roots for Deep subtree and IAVL tree")
 				}
 			case Remove:
-				isNewKey, keyToDelete := key()
+				return
+				isNewKey, keyToDelete := key(tree.ImmutableTree)
 				if isNewKey {
 					// TODO: Add more information needed for Delete operation in Deep Subtree
 					require.NoError(nil)

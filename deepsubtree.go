@@ -73,10 +73,13 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.RightSiblingProof, err = createExistenceProof(tree.ImmutableTree, rightSibling.key)
-		if err != nil {
-			return nil, err
+		if rightSibling != nil {
+			dstNonExistenceProof.RightSiblingProof, err = createExistenceProof(tree.ImmutableTree, rightSibling.key)
+			if err != nil {
+				return nil, err
+			}
 		}
+
 	}
 	return &dstNonExistenceProof, nil
 }

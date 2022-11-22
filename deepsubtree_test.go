@@ -19,7 +19,7 @@ const (
 )
 
 const (
-	cacheSize = math.MaxUint32
+	cacheSize = math.MaxUint16
 )
 
 // Returns whether given trees have equal hashes

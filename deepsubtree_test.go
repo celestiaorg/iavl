@@ -289,7 +289,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 				r.Read(k)
 				val, err := tree.Get(k)
 				require.NoError(err)
-				if val != nil {
+				if len(k) == 0 || val != nil {
 					return false, nil
 				}
 				keys = append(keys, k)
@@ -316,8 +316,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 				}
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
-				rootHash, err := dst.WorkingHash()
-				require.NoError(err)
+				rootHash := []byte(nil)
 				if isNewKey && numKeys > 0 {
 					// Add existence proof for new key
 					ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
@@ -325,18 +324,29 @@ func FuzzBatchAddReverse(f *testing.F) {
 					dst_nonExistenceProof, err := ConvertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
 					require.NoError(err)
 					dst.AddNonExistenceProof(dst_nonExistenceProof)
+
+					rootHash, err = tree.WorkingHash()
 					require.NoError(err)
-					dst.BuildTree(rootHash)
+					err = dst.BuildTree(rootHash)
+					require.NoError(err)
 
 					// Set key-value pair in IAVL tree
 					tree.Set(keyToAdd, value)
 					tree.SaveVersion()
 				} else {
+					if tree.root != nil {
+						rootHash, err = tree.WorkingHash()
+						require.NoError(err)
+					}
+
 					// Set key-value pair in IAVL tree
 					tree.Set(keyToAdd, value)
 					tree.SaveVersion()
-					rootHash, err = tree.WorkingHash()
-					require.NoError(err)
+
+					if rootHash == nil {
+						rootHash, err = tree.WorkingHash()
+						require.NoError(err)
+					}
 
 					ics23proof, err := tree.GetMembershipProof(keyToAdd)
 					require.NoError(err)
@@ -384,6 +394,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 				}
 			}
 		}
-
+		t.Log("Done")
 	})
 }

@@ -63,9 +63,11 @@ func ConvertToDSTNonExistenceProof(
 		if err != nil {
 			return nil, err
 		}
-		dstNonExistenceProof.LeftSiblingProof, err = createExistenceProof(tree.ImmutableTree, leftSibling.key)
-		if err != nil {
-			return nil, err
+		if leftSibling != nil {
+			dstNonExistenceProof.LeftSiblingProof, err = createExistenceProof(tree.ImmutableTree, leftSibling.key)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	if nonExistenceProof.Right != nil {
@@ -189,25 +191,11 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 	if len(node.leftHash) > 0 {
 		if node.leftNode == nil {
 			node.leftNode, _ = dst.ndb.GetNode(node.leftHash)
-		} else if !bytes.Equal(node.leftNode.hash, node.leftHash) {
-			return fmt.Errorf(
-				"for node: %s, leftNode hash: %s and node leftHash: %s do not match",
-				node.hash,
-				node.leftNode.hash,
-				node.leftHash,
-			)
 		}
 	}
 	if len(node.rightHash) > 0 {
 		if node.rightNode == nil {
 			node.rightNode, _ = dst.ndb.GetNode(node.rightHash)
-		} else if !bytes.Equal(node.rightNode.hash, node.rightHash) {
-			return fmt.Errorf(
-				"for node: %s, rightNode hash: %s and node rightHash: %s do not match",
-				node.hash,
-				node.rightNode.hash,
-				node.rightHash,
-			)
 		}
 	}
 	return nil

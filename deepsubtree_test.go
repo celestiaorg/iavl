@@ -6,6 +6,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/chrispappas/golang-generics-set/set"
+
 	"github.com/stretchr/testify/require"
 	db "github.com/tendermint/tm-db"
 )
@@ -281,10 +283,10 @@ func FuzzBatchAddReverse(f *testing.F) {
 		require.NoError(err)
 		dst := NewDeepSubTree(db.NewMemDB(), cacheSize, true, 0)
 		r := bytes.NewReader(input)
-		var keys [][]byte
+		keys := make(set.Set[string])
 		// Generates random new key half times and an existing key for the other half times.
-		key := func(tree *ImmutableTree) (isRandom bool, key []byte) {
-			if readByte(r) < math.MaxUint8/2 {
+		key := func(tree *ImmutableTree, genRandom bool) (isRandom bool, key []byte) {
+			if genRandom && readByte(r) < math.MaxUint8/2 {
 				k := make([]byte, readByte(r)/2)
 				r.Read(k)
 				val, err := tree.Get(k)
@@ -292,13 +294,15 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if len(k) == 0 || val != nil {
 					return false, nil
 				}
-				keys = append(keys, k)
+				keys.Add(string(k))
 				return true, k
 			}
-			if len(keys) == 0 {
+			if keys.Len() == 0 {
 				return false, nil
 			}
-			return false, keys[int(readByte(r))%len(keys)]
+			keyList := keys.Values()
+			kString := keyList[int(readByte(r))%len(keys)]
+			return false, []byte(kString)
 		}
 		for i := 0; r.Len() != 0; i++ {
 			b, err := r.ReadByte()
@@ -310,7 +314,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 			numKeys := len(keys)
 			switch op {
 			case Set:
-				isNewKey, keyToAdd := key(tree.ImmutableTree)
+				isNewKey, keyToAdd := key(tree.ImmutableTree, true)
 				if keyToAdd == nil {
 					continue
 				}
@@ -369,23 +373,29 @@ func FuzzBatchAddReverse(f *testing.F) {
 				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 				require.NoError(err)
 				if !areEqual {
-					t.Error("Unequal roots for Deep subtree and IAVL tree")
+					t.Error("Add: Unequal roots for Deep subtree and IAVL tree")
 				}
 			case Remove:
-				return
-				isNewKey, keyToDelete := key(tree.ImmutableTree)
-				if isNewKey {
-					// TODO: Add more information needed for Delete operation in Deep Subtree
-					require.NoError(nil)
+				// if isNewKey {
+				// 	// TODO: Add more information needed for Delete operation in Deep Subtree
+				// 	require.NoError(nil)
+				// }
+				_, keyToDelete := key(tree.ImmutableTree, false)
+				if keyToDelete == nil {
+					continue
 				}
+
+				keys.Delete(string(keyToDelete))
+
+				tree.Remove(keyToDelete)
+				tree.SaveVersion()
+
 				dst.Remove(keyToDelete)
-				dst.SaveVersion()
 				rootHash, err := dst.WorkingHash()
 				require.NoError(err)
 				err = dst.BuildTree(rootHash)
 				require.NoError(err)
-				tree.Remove(keyToDelete)
-				tree.SaveVersion()
+				dst.SaveVersion()
 
 				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 				require.NoError(err)

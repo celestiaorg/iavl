@@ -16,6 +16,7 @@ require (
 require (
 	github.com/DataDog/zstd v1.4.1 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
+	github.com/chrispappas/golang-generics-set v1.0.1
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgraph-io/badger/v2 v2.2007.2 // indirect
 	github.com/dgraph-io/ristretto v0.0.3-0.20200630154024-f66de99634de // indirect

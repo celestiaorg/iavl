@@ -58,11 +58,11 @@ func ConvertToDSTNonExistenceProof(
 	}
 	if nonExistenceProof.Left != nil {
 		dstNonExistenceProof.existenceProofs = append(dstNonExistenceProof.existenceProofs, nonExistenceProof.Left)
-		leftSibling, err := tree.GetSiblingNode(nonExistenceProof.Left.Key)
+		leftSiblings, err := tree.GetSiblingNodes(nonExistenceProof.Left.Key)
 		if err != nil {
 			return nil, err
 		}
-		if leftSibling != nil {
+		for _, leftSibling := range leftSiblings {
 			leftSiblingProof, err := createExistenceProof(tree.ImmutableTree, leftSibling.key)
 			if err != nil {
 				return nil, err
@@ -72,11 +72,11 @@ func ConvertToDSTNonExistenceProof(
 	}
 	if nonExistenceProof.Right != nil {
 		dstNonExistenceProof.existenceProofs = append(dstNonExistenceProof.existenceProofs, nonExistenceProof.Right)
-		rightSibling, err := tree.GetSiblingNode(nonExistenceProof.Right.Key)
+		rightSiblings, err := tree.GetSiblingNodes(nonExistenceProof.Right.Key)
 		if err != nil {
 			return nil, err
 		}
-		if rightSibling != nil {
+		for _, rightSibling := range rightSiblings {
 			rightSiblingProof, err := createExistenceProof(tree.ImmutableTree, rightSibling.key)
 			if err != nil {
 				return nil, err
@@ -88,42 +88,40 @@ func ConvertToDSTNonExistenceProof(
 }
 
 // Returns the sibling node of a leaf node with given key
-func (tree *ImmutableTree) GetSiblingNode(key []byte) (*Node, error) {
-	siblingNode, err := tree.recursiveGetSiblingNode(tree.root, key)
+func (tree *ImmutableTree) GetSiblingNodes(key []byte) ([]*Node, error) {
+	siblingNodes := make([]*Node, 0)
+	err := tree.recursiveGetSiblingNodes(tree.root, key, &siblingNodes)
 	if err != nil {
 		return nil, err
 	}
-	return siblingNode, nil
+	return siblingNodes, nil
 }
 
-// Recursively iterates the tree to return the sibling node of a leaf node with given key
-func (tree *ImmutableTree) recursiveGetSiblingNode(node *Node, key []byte) (*Node, error) {
+// Recursively iterates the tree to return all the siblings node of nodes with given key
+func (tree *ImmutableTree) recursiveGetSiblingNodes(node *Node, key []byte, siblingNodes *[]*Node) error {
 	if node == nil || node.isLeaf() {
-		return nil, nil
+		return nil
 	}
 	leftNode, err := node.getLeftNode(tree)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	rightNode, err := node.getRightNode(tree)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if leftNode != nil && leftNode.isLeaf() && bytes.Equal(leftNode.key, key) {
-		return rightNode, nil
+	if leftNode != nil && bytes.Equal(leftNode.key, key) {
+		*siblingNodes = append(*siblingNodes, rightNode)
 	}
-	if rightNode != nil && rightNode.isLeaf() && bytes.Equal(rightNode.key, key) {
-		return leftNode, nil
+	if rightNode != nil && bytes.Equal(rightNode.key, key) {
+		*siblingNodes = append(*siblingNodes, leftNode)
 	}
 
-	siblingNode, err := tree.recursiveGetSiblingNode(leftNode, key)
+	err = tree.recursiveGetSiblingNodes(leftNode, key, siblingNodes)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if siblingNode != nil {
-		return siblingNode, nil
-	}
-	return tree.recursiveGetSiblingNode(rightNode, key)
+	return tree.recursiveGetSiblingNodes(rightNode, key, siblingNodes)
 }
 
 func (node *Node) updateInnerNodeKey() {

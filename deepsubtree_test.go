@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/chrispappas/golang-generics-set/set"
+	ics23 "github.com/confio/ics23/go"
 
 	"github.com/stretchr/testify/require"
 	db "github.com/tendermint/tm-db"
@@ -97,7 +98,9 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	for _, key := range allkeys {
 		ics23proof, err := tree.GetMembershipProof(key)
 		require.NoError(err)
-		err = dst.AddExistenceProof(ics23proof.GetExist())
+		err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
+			ics23proof.GetExist(),
+		})
 		require.NoError(err)
 
 		err = dst.BuildTree(rootHash)
@@ -148,7 +151,9 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		for _, subsetKey := range subsetKeys {
 			ics23proof, err := tree.GetMembershipProof(subsetKey)
 			require.NoError(err)
-			err = dst.AddExistenceProof(ics23proof.GetExist())
+			err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
+				ics23proof.GetExist(),
+			})
 			require.NoError(err)
 		}
 		dst.BuildTree(rootHash)
@@ -201,7 +206,9 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for _, subsetKey := range subsetKeys {
 		ics23proof, err := tree.GetMembershipProof(subsetKey)
 		require.NoError(err)
-		err = dst.AddExistenceProof(ics23proof.GetExist())
+		err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
+			ics23proof.GetExist(),
+		})
 		require.NoError(err)
 	}
 
@@ -215,11 +222,11 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for _, keyToAdd := range keysToAdd {
 		ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
 		require.NoError(err)
-		dst_nonExistenceProof, err := ConvertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
+		dst_nonExistenceProof, err := GetSiblingExistenceProofsNonExistence(tree, ics23proof.GetNonexist())
 		require.NoError(err)
-		dst.AddNonExistenceProof(dst_nonExistenceProof)
+		err = dst.AddExistenceProofs(dst_nonExistenceProof)
 		require.NoError(err)
-		dst.BuildTree(rootHash)
+		err = dst.BuildTree(rootHash)
 		require.NoError(err)
 	}
 	dst.SaveVersion()
@@ -325,9 +332,10 @@ func FuzzBatchAddReverse(f *testing.F) {
 					// Add existence proof for new key
 					ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
 					require.NoError(err)
-					dst_nonExistenceProof, err := ConvertToDSTNonExistenceProof(tree, ics23proof.GetNonexist())
+					dst_nonExistenceProof, err := GetSiblingExistenceProofsNonExistence(tree, ics23proof.GetNonexist())
 					require.NoError(err)
-					dst.AddNonExistenceProof(dst_nonExistenceProof)
+					err = dst.AddExistenceProofs(dst_nonExistenceProof)
+					require.NoError(err)
 
 					rootHash, err = tree.WorkingHash()
 					require.NoError(err)
@@ -354,7 +362,9 @@ func FuzzBatchAddReverse(f *testing.F) {
 
 					ics23proof, err := tree.GetMembershipProof(keyToAdd)
 					require.NoError(err)
-					err = dst.AddExistenceProof(ics23proof.GetExist())
+					err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
+						ics23proof.GetExist(),
+					})
 					require.NoError(err)
 					err = dst.BuildTree(rootHash)
 					require.NoError(err)
@@ -376,10 +386,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 					t.Error("Add: Unequal roots for Deep subtree and IAVL tree")
 				}
 			case Remove:
-				// if isNewKey {
-				// 	// TODO: Add more information needed for Delete operation in Deep Subtree
-				// 	require.NoError(nil)
-				// }
+				// TODO: Add more information needed for Delete operation in Deep Subtree
+				require.NoError(nil)
 				_, keyToDelete := key(tree.ImmutableTree, false)
 				if keyToDelete == nil {
 					continue

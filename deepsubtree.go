@@ -20,13 +20,8 @@ const (
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
-}
-
-// Represents a Non-Existence proof for a Deep Subtree.
-// Includes existence proofs for siblings of nodes in
-// the ICS23 non-existence proof.
-type DSTNonExistenceProof struct {
-	existenceProofs []*ics23.ExistenceProof
+	// witnessData WitnessData
+	// counter     int
 }
 
 // NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
@@ -47,44 +42,48 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 	return &DeepSubTree{MutableTree: mutableTree}
 }
 
-// Constructs a DSTNonExistenceProof using an ICS23 Non-Existence proof
-// and sibling node proofs. Returns the constructed DSTNonExistenceProof.
-func ConvertToDSTNonExistenceProof(
+// Returns the list of existence proofs for siblings of nodes in path from
+// root node to leaf node
+func (tree *MutableTree) GetSiblingExistenceProofs(key []byte) ([]*ics23.ExistenceProof, error) {
+	existenceProofs := make([]*ics23.ExistenceProof, 0)
+	siblings, err := tree.GetSiblingNodes(key)
+	if err != nil {
+		return nil, err
+	}
+	for _, sibling := range siblings {
+		siblingProof, err := createExistenceProof(tree.ImmutableTree, sibling.key)
+		if err != nil {
+			return nil, err
+		}
+		existenceProofs = append(existenceProofs, siblingProof)
+	}
+	return existenceProofs, nil
+}
+
+// Returns the list of existence proofs needed to be added for
+// a given non-existence proof in a tree.
+func GetSiblingExistenceProofsNonExistence(
 	tree *MutableTree,
 	nonExistenceProof *ics23.NonExistenceProof,
-) (*DSTNonExistenceProof, error) {
-	dstNonExistenceProof := DSTNonExistenceProof{
-		existenceProofs: make([]*ics23.ExistenceProof, 0),
-	}
+) ([]*ics23.ExistenceProof, error) {
+	existenceProofs := make([]*ics23.ExistenceProof, 0)
 	if nonExistenceProof.Left != nil {
-		dstNonExistenceProof.existenceProofs = append(dstNonExistenceProof.existenceProofs, nonExistenceProof.Left)
-		leftSiblings, err := tree.GetSiblingNodes(nonExistenceProof.Left.Key)
+		existenceProofs = append(existenceProofs, nonExistenceProof.Left)
+		leftSiblingProofs, err := tree.GetSiblingExistenceProofs(nonExistenceProof.Left.Key)
 		if err != nil {
 			return nil, err
 		}
-		for _, leftSibling := range leftSiblings {
-			leftSiblingProof, err := createExistenceProof(tree.ImmutableTree, leftSibling.key)
-			if err != nil {
-				return nil, err
-			}
-			dstNonExistenceProof.existenceProofs = append(dstNonExistenceProof.existenceProofs, leftSiblingProof)
-		}
+		existenceProofs = append(existenceProofs, leftSiblingProofs...)
 	}
 	if nonExistenceProof.Right != nil {
-		dstNonExistenceProof.existenceProofs = append(dstNonExistenceProof.existenceProofs, nonExistenceProof.Right)
-		rightSiblings, err := tree.GetSiblingNodes(nonExistenceProof.Right.Key)
+		existenceProofs = append(existenceProofs, nonExistenceProof.Right)
+		rightSiblingProofs, err := tree.GetSiblingExistenceProofs(nonExistenceProof.Right.Key)
 		if err != nil {
 			return nil, err
 		}
-		for _, rightSibling := range rightSiblings {
-			rightSiblingProof, err := createExistenceProof(tree.ImmutableTree, rightSibling.key)
-			if err != nil {
-				return nil, err
-			}
-			dstNonExistenceProof.existenceProofs = append(dstNonExistenceProof.existenceProofs, rightSiblingProof)
-		}
+		existenceProofs = append(existenceProofs, rightSiblingProofs...)
 	}
-	return &dstNonExistenceProof, nil
+	return existenceProofs, nil
 }
 
 // Returns the sibling node of a leaf node with given key
@@ -205,7 +204,7 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 	if value == nil {
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
 	}
-
+	// TODO: verify operation is on top, look at the witness data and add the relevant existence proofs
 	dst.root, updated, err = dst.recursiveSet(dst.root, key, value)
 	if err != nil {
 		return updated, err
@@ -510,19 +509,14 @@ func (node *Node) getLowestKey() []byte {
 	return lowestKey
 }
 
-// Adds nodes associated to the given ICS-23 existence proof to the underlying deep subtree
-func (dst *DeepSubTree) AddExistenceProof(existProof *ics23.ExistenceProof) error {
-	err := dst.addExistenceProof(existProof)
-	if err != nil {
-		return err
-	}
-	return dst.ndb.Commit()
-}
-
-// Adds nodes associated to the given DST non-existence proof to the underlying deep subtree
-func (dst *DeepSubTree) AddNonExistenceProof(nonExistProof *DSTNonExistenceProof) error {
-	for _, existenceProof := range nonExistProof.existenceProofs {
-		err := dst.AddExistenceProof(existenceProof)
+// Adds nodes associated to the given existence proof to the underlying deep subtree
+func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistenceProof) error {
+	for _, existenceProof := range existenceProofs {
+		err := dst.addExistenceProof(existenceProof)
+		if err != nil {
+			return err
+		}
+		err = dst.ndb.Commit()
 		if err != nil {
 			return err
 		}

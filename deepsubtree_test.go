@@ -386,24 +386,31 @@ func FuzzBatchAddReverse(f *testing.F) {
 					t.Error("Add: Unequal roots for Deep subtree and IAVL tree")
 				}
 			case Remove:
-				// TODO: Add more information needed for Delete operation in Deep Subtree
-				require.NoError(nil)
 				_, keyToDelete := key(tree.ImmutableTree, false)
 				if keyToDelete == nil {
 					continue
 				}
-
 				keys.Delete(string(keyToDelete))
 
-				tree.Remove(keyToDelete)
-				tree.SaveVersion()
+				// TODO: Add more information needed for Delete operation in Deep Subtree
+				existenceProofs, err := tree.GetSiblingExistenceProofs(keyToDelete)
+				require.NoError(err)
+				err = dst.AddExistenceProofs(existenceProofs)
+				require.NoError(err)
+				rootHash, err := tree.WorkingHash()
+				require.NoError(err)
+				err = dst.BuildTree(rootHash)
+				require.NoError(err)
 
 				dst.Remove(keyToDelete)
-				rootHash, err := dst.WorkingHash()
+				rootHash, err = dst.WorkingHash()
 				require.NoError(err)
 				err = dst.BuildTree(rootHash)
 				require.NoError(err)
 				dst.SaveVersion()
+
+				tree.Remove(keyToDelete)
+				tree.SaveVersion()
 
 				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 				require.NoError(err)

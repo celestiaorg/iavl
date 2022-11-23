@@ -110,16 +110,14 @@ func (tree *ImmutableTree) recursiveGetSiblingNodes(node *Node, key []byte, sibl
 	if err != nil {
 		return err
 	}
-	if leftNode != nil && bytes.Equal(leftNode.key, key) {
-		*siblingNodes = append(*siblingNodes, rightNode)
+	if bytes.Compare(key, node.key) < 0 {
+		if rightNode != nil {
+			*siblingNodes = append(*siblingNodes, rightNode)
+		}
+		return tree.recursiveGetSiblingNodes(leftNode, key, siblingNodes)
 	}
-	if rightNode != nil && bytes.Equal(rightNode.key, key) {
+	if rightNode != nil {
 		*siblingNodes = append(*siblingNodes, leftNode)
-	}
-
-	err = tree.recursiveGetSiblingNodes(leftNode, key, siblingNodes)
-	if err != nil {
-		return err
 	}
 	return tree.recursiveGetSiblingNodes(rightNode, key, siblingNodes)
 }

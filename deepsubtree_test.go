@@ -311,7 +311,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 			kString := keyList[int(readByte(r))%len(keys)]
 			return false, []byte(kString)
 		}
-		flag, flag2 := false, false
 		for i := 0; r.Len() != 0; i++ {
 			b, err := r.ReadByte()
 			if err != nil {
@@ -391,16 +390,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if keyToDelete == nil {
 					continue
 				}
-				if string(keyToDelete) == "2712" && i == 6 {
-					flag = true
-				}
-
-				if flag2 {
-					if (string(keyToDelete) == "7M8b" || string(keyToDelete) == "B01002212010879202192B72") && i == 7 {
-						ics23proof := ics23.ExistenceProof{}
-						_ = ics23proof
-					}
-				}
 
 				ics23proof, err := tree.GetMembershipProof(keyToDelete)
 				require.NoError(err)
@@ -433,9 +422,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if !areEqual {
 					t.Error("Remove: Unequal roots for Deep subtree and IAVL tree")
 				}
-			}
-			if flag {
-				flag2 = true
 			}
 		}
 		t.Log("Done")

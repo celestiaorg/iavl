@@ -86,7 +86,7 @@ func GetSiblingExistenceProofsNonExistence(
 	return existenceProofs, nil
 }
 
-// Returns the sibling node of a leaf node with given key
+// Returns the sibling nodes of a node with given key
 func (tree *ImmutableTree) GetSiblingNodes(key []byte) ([]*Node, error) {
 	siblingNodes := make([]*Node, 0)
 	err := tree.recursiveGetSiblingNodes(tree.root, key, &siblingNodes)
@@ -94,6 +94,21 @@ func (tree *ImmutableTree) GetSiblingNodes(key []byte) ([]*Node, error) {
 		return nil, err
 	}
 	return siblingNodes, nil
+}
+
+func (tree *ImmutableTree) getAllChildren(node *Node) ([]*Node, error) {
+	if node.isLeaf() {
+		return nil, nil
+	}
+	leftNode, err := node.getLeftNode(tree)
+	if err != nil {
+		return nil, err
+	}
+	rightNode, err := node.getRightNode(tree)
+	if err != nil {
+		return nil, err
+	}
+	return []*Node{leftNode, rightNode}, nil
 }
 
 // Recursively iterates the tree to return all the siblings node of nodes with given key
@@ -112,11 +127,26 @@ func (tree *ImmutableTree) recursiveGetSiblingNodes(node *Node, key []byte, sibl
 	if bytes.Compare(key, node.key) < 0 {
 		if rightNode != nil {
 			*siblingNodes = append(*siblingNodes, rightNode)
+			siblingChildren, err := tree.getAllChildren(rightNode)
+			if err != nil {
+				return err
+			}
+			if siblingChildren != nil {
+				*siblingNodes = append(*siblingNodes, siblingChildren...)
+
+			}
 		}
 		return tree.recursiveGetSiblingNodes(leftNode, key, siblingNodes)
 	}
 	if rightNode != nil {
 		*siblingNodes = append(*siblingNodes, leftNode)
+		siblingChildren, err := tree.getAllChildren(leftNode)
+		if err != nil {
+			return err
+		}
+		if siblingChildren != nil {
+			*siblingNodes = append(*siblingNodes, siblingChildren...)
+		}
 	}
 	return tree.recursiveGetSiblingNodes(rightNode, key, siblingNodes)
 }

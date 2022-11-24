@@ -311,6 +311,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 			kString := keyList[int(readByte(r))%len(keys)]
 			return false, []byte(kString)
 		}
+		flag, flag2 := false, false
 		for i := 0; r.Len() != 0; i++ {
 			b, err := r.ReadByte()
 			if err != nil {
@@ -390,11 +391,22 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if keyToDelete == nil {
 					continue
 				}
-				keys.Delete(string(keyToDelete))
+				if string(keyToDelete) == "2712" && i == 6 {
+					flag = true
+				}
 
-				// TODO: Add more information needed for Delete operation in Deep Subtree
+				if flag2 {
+					if (string(keyToDelete) == "7M8b" || string(keyToDelete) == "B01002212010879202192B72") && i == 7 {
+						ics23proof := ics23.ExistenceProof{}
+						_ = ics23proof
+					}
+				}
+
+				ics23proof, err := tree.GetMembershipProof(keyToDelete)
+				require.NoError(err)
 				existenceProofs, err := tree.GetSiblingExistenceProofs(keyToDelete)
 				require.NoError(err)
+				existenceProofs = append(existenceProofs, ics23proof.GetExist())
 				err = dst.AddExistenceProofs(existenceProofs)
 				require.NoError(err)
 				rootHash, err := tree.WorkingHash()
@@ -402,7 +414,9 @@ func FuzzBatchAddReverse(f *testing.F) {
 				err = dst.BuildTree(rootHash)
 				require.NoError(err)
 
-				dst.Remove(keyToDelete)
+				_, removed, err := dst.Remove(keyToDelete)
+				require.NoError(err)
+				require.True(removed)
 				rootHash, err = dst.WorkingHash()
 				require.NoError(err)
 				err = dst.BuildTree(rootHash)
@@ -412,11 +426,16 @@ func FuzzBatchAddReverse(f *testing.F) {
 				tree.Remove(keyToDelete)
 				tree.SaveVersion()
 
+				keys.Delete(string(keyToDelete))
+
 				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 				require.NoError(err)
 				if !areEqual {
 					t.Error("Remove: Unequal roots for Deep subtree and IAVL tree")
 				}
+			}
+			if flag {
+				flag2 = true
 			}
 		}
 		t.Log("Done")

@@ -101,10 +101,7 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 		require.NoError(err)
 		err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
 			ics23proof.GetExist(),
-		})
-		require.NoError(err)
-
-		err = dst.BuildTree(rootHash)
+		}, rootHash)
 		require.NoError(err)
 	}
 
@@ -154,11 +151,9 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 			require.NoError(err)
 			err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
 				ics23proof.GetExist(),
-			})
+			}, rootHash)
 			require.NoError(err)
 		}
-		dst.BuildTree(rootHash)
-		require.NoError(err)
 		dst.SaveVersion()
 
 		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
@@ -209,7 +204,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		require.NoError(err)
 		err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
 			ics23proof.GetExist(),
-		})
+		}, rootHash)
 		require.NoError(err)
 	}
 
@@ -223,9 +218,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for i, keyToAdd := range keysToAdd {
 		existenceProofs, err := tree.getExistenceProofsNeededForSet(keyToAdd, valuesToAdd[i])
 		require.NoError(err)
-		err = dst.AddExistenceProofs(existenceProofs)
-		require.NoError(err)
-		err = dst.BuildTree(rootHash)
+		err = dst.AddExistenceProofs(existenceProofs, rootHash)
 		require.NoError(err)
 	}
 	dst.SaveVersion()
@@ -235,16 +228,13 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	require.True(areEqual)
 
 	require.Equal(len(keysToAdd), len(valuesToAdd))
+
 	// Add all the keys we intend to add and check root hashes stay equal
 	for i := range keysToAdd {
 		keyToAdd := keysToAdd[i]
 		valueToAdd := valuesToAdd[i]
 		dst.Set(keyToAdd, valueToAdd)
 		dst.SaveVersion()
-		rootHash, err := dst.WorkingHash()
-		require.NoError(err)
-		err = dst.BuildTree(rootHash)
-		require.NoError(err)
 		tree.Set(keyToAdd, valueToAdd)
 		tree.SaveVersion()
 
@@ -255,14 +245,18 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 
 	// Delete all the keys we added and check root hashes stay equal
 	for i := range keysToAdd {
-		keyToAdd := keysToAdd[i]
-		dst.Remove(keyToAdd)
+		keyToDelete := keysToAdd[i]
+
+		existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
+		require.NoError(err)
+		rootHash, err := tree.WorkingHash()
+		require.NoError(err)
+		err = dst.AddExistenceProofs(existenceProofs, rootHash)
+		require.NoError(err)
+
+		dst.Remove(keyToDelete)
 		dst.SaveVersion()
-		rootHash, err := dst.WorkingHash()
-		require.NoError(err)
-		err = dst.BuildTree(rootHash)
-		require.NoError(err)
-		tree.Remove(keyToAdd)
+		tree.Remove(keyToDelete)
 		tree.SaveVersion()
 
 		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
@@ -282,7 +276,7 @@ func readByte(r *bytes.Reader) byte {
 func FuzzBatchAddReverse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		require := require.New(t)
-		if len(input) < 100 {
+		if len(input) < 1000 {
 			return
 		}
 		tree, err := NewMutableTreeWithOpts(db.NewMemDB(), cacheSize, nil, true)
@@ -331,12 +325,9 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if isNewKey && numKeys > 0 {
 					existenceProofs, err := tree.getExistenceProofsNeededForSet(keyToAdd, value)
 					require.NoError(err)
-					err = dst.AddExistenceProofs(existenceProofs)
-					require.NoError(err)
-
 					rootHash, err = tree.WorkingHash()
 					require.NoError(err)
-					err = dst.BuildTree(rootHash)
+					err = dst.AddExistenceProofs(existenceProofs, rootHash)
 					require.NoError(err)
 
 					// Set key-value pair in IAVL tree
@@ -375,18 +366,14 @@ func FuzzBatchAddReverse(f *testing.F) {
 
 					err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
 						ics23proof.GetExist(),
-					})
-					require.NoError(err)
-					err = dst.BuildTree(rootHash)
+					}, rootHash,
+					)
 					require.NoError(err)
 				}
 
 				if numKeys > 0 {
 					// Set key-value pair in DST
-					dst.Set(keyToAdd, value)
-					rootHash, err := dst.WorkingHash()
-					require.NoError(err)
-					err = dst.BuildTree(rootHash)
+					_, err = dst.Set(keyToAdd, value)
 					require.NoError(err)
 				}
 				dst.SaveVersion()
@@ -405,24 +392,13 @@ func FuzzBatchAddReverse(f *testing.F) {
 
 				existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
 				require.NoError(err)
-				ics23proof, err := tree.GetMembershipProof(keyToDelete)
-				require.NoError(err)
-				existenceProofs = append(existenceProofs, ics23proof.GetExist())
-
-				err = dst.AddExistenceProofs(existenceProofs)
-				require.NoError(err)
 				rootHash, err := tree.WorkingHash()
 				require.NoError(err)
-				err = dst.BuildTree(rootHash)
+				err = dst.AddExistenceProofs(existenceProofs, rootHash)
 				require.NoError(err)
-
 				_, removed, err := dst.Remove(keyToDelete)
 				require.NoError(err)
 				require.True(removed)
-				rootHash, err = dst.WorkingHash()
-				require.NoError(err)
-				err = dst.BuildTree(rootHash)
-				require.NoError(err)
 				dst.SaveVersion()
 
 				tree.Remove(keyToDelete)

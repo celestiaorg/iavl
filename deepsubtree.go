@@ -338,9 +338,19 @@ func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte
 }
 
 func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
+	ics23proof, err := tree.GetMembershipProof(key)
+	if err != nil {
+		return nil, err
+	}
+
 	tree.Remove(key)
 
-	return tree.getExistenceProofsNeeded()
+	existenceProofs, err := tree.getExistenceProofsNeeded()
+	if err != nil {
+		return nil, err
+	}
+	existenceProofs = append(existenceProofs, ics23proof.GetExist())
+	return existenceProofs, nil
 }
 
 func (tree *MutableTree) getExistenceProofsNeeded() ([]*ics23.ExistenceProof, error) {
@@ -459,7 +469,7 @@ func (node *Node) getLowestKey() []byte {
 }
 
 // Adds nodes associated to the given existence proof to the underlying deep subtree
-func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistenceProof) error {
+func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistenceProof, rootHash []byte) error {
 	for _, existenceProof := range existenceProofs {
 		err := dst.addExistenceProof(existenceProof)
 		if err != nil {
@@ -469,6 +479,10 @@ func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistencePro
 		if err != nil {
 			return err
 		}
+	}
+	err := dst.BuildTree(rootHash)
+	if err != nil {
+		return err
 	}
 	return nil
 }

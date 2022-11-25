@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/chrispappas/golang-generics-set/set"
 	"github.com/pkg/errors"
 	dbm "github.com/tendermint/tm-db"
 
@@ -827,11 +828,7 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	if version == 1 && tree.ndb.opts.InitialVersion > 0 {
 		version = int64(tree.ndb.opts.InitialVersion)
 	}
-	if tree.ndb.keysAccessed != nil {
-		for k := range tree.ndb.keysAccessed {
-			delete(tree.ndb.keysAccessed, k)
-		}
-	}
+	tree.ndb.keysAccessed = make(set.Set[string])
 
 	if tree.VersionExists(version) {
 		// If the version already exists, return an error as we're attempting to overwrite.

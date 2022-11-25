@@ -225,14 +225,6 @@ func (dst *DeepSubTree) Remove(tree *MutableTree, key []byte) (value []byte, rem
 	if dst.root == nil {
 		return nil, false, nil
 	}
-	existenceProofs, err := tree.getExistenceProofsNeededForRemove(key)
-	if err != nil {
-		return nil, false, err
-	}
-	err = dst.AddExistenceProofs(existenceProofs, nil)
-	if err != nil {
-		return nil, false, err
-	}
 	newRootHash, newRoot, value, err := dst.recursiveRemove(dst.root, key)
 	if err != nil {
 		return nil, false, err

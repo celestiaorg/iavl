@@ -245,6 +245,11 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for i := range keysToAdd {
 		keyToDelete := keysToAdd[i]
 
+		existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
+		require.NoError(err)
+		err = dst.AddExistenceProofs(existenceProofs, nil)
+		require.NoError(err)
+
 		dst.Remove(tree, keyToDelete)
 		dst.SaveVersion()
 		tree.Remove(keyToDelete)
@@ -375,6 +380,14 @@ func (dst *DeepSubTree) setInDST(key []byte, value []byte, isNewKey bool, isFirs
 func (dst *DeepSubTree) removeInDST(key []byte, tree *MutableTree) error {
 	if key == nil {
 		return nil
+	}
+	existenceProofs, err := tree.getExistenceProofsNeededForRemove(key)
+	if err != nil {
+		return err
+	}
+	err = dst.AddExistenceProofs(existenceProofs, nil)
+	if err != nil {
+		return err
 	}
 	_, removed, err := dst.Remove(tree, key)
 	if err != nil {

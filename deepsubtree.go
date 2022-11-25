@@ -122,10 +122,11 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 // Set sets a key in the working tree with the given value.
 // Assumption: Node with given key already exists and is a leaf node.
 // Modified version of set taken from mutable_tree.go
-func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
+func (dst *DeepSubTree) Set(tree *MutableTree, key []byte, value []byte) (updated bool, err error) {
 	if value == nil {
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
 	}
+
 	// TODO: verify operation is on top, look at the witness data and add the relevant existence proofs
 	dst.root, updated, err = dst.recursiveSet(dst.root, key, value)
 	if err != nil {
@@ -220,9 +221,17 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 
 // Remove tries to remove a key from the tree and if removed, returns its
 // value, nodes orphaned and 'true'.
-func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err error) {
+func (dst *DeepSubTree) Remove(tree *MutableTree, key []byte) (value []byte, removed bool, err error) {
 	if dst.root == nil {
 		return nil, false, nil
+	}
+	existenceProofs, err := tree.getExistenceProofsNeededForRemove(key)
+	if err != nil {
+		return nil, false, err
+	}
+	err = dst.AddExistenceProofs(existenceProofs, nil)
+	if err != nil {
+		return nil, false, err
 	}
 	newRootHash, newRoot, value, err := dst.recursiveRemove(dst.root, key)
 	if err != nil {

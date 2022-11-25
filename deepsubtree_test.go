@@ -3,10 +3,13 @@ package iavl
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"math"
 	"testing"
 
 	"github.com/chrispappas/golang-generics-set/set"
+
 	ics23 "github.com/confio/ics23/go"
 
 	"github.com/stretchr/testify/require"
@@ -157,7 +160,7 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 
 		values := [][]byte{{10}, {20}}
 		for i, subsetKey := range subsetKeys {
-			dst.Set(subsetKey, values[i])
+			dst.Set(tree, subsetKey, values[i])
 			dst.SaveVersion()
 			tree.Set(subsetKey, values[i])
 			tree.SaveVersion()
@@ -228,7 +231,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for i := range keysToAdd {
 		keyToAdd := keysToAdd[i]
 		valueToAdd := valuesToAdd[i]
-		dst.Set(keyToAdd, valueToAdd)
+		dst.Set(tree, keyToAdd, valueToAdd)
 		dst.SaveVersion()
 		tree.Set(keyToAdd, valueToAdd)
 		tree.SaveVersion()
@@ -242,14 +245,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for i := range keysToAdd {
 		keyToDelete := keysToAdd[i]
 
-		existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
-		require.NoError(err)
-		rootHash, err := tree.WorkingHash()
-		require.NoError(err)
-		err = dst.AddExistenceProofs(existenceProofs, rootHash)
-		require.NoError(err)
-
-		dst.Remove(keyToDelete)
+		dst.Remove(tree, keyToDelete)
 		dst.SaveVersion()
 		tree.Remove(keyToDelete)
 		tree.SaveVersion()
@@ -291,6 +287,117 @@ func getKey(tree *ImmutableTree, keys set.Set[string], r *bytes.Reader, genRando
 	return false, []byte(kString), nil
 }
 
+func (dst *DeepSubTree) setInDST(key []byte, value []byte, isNewKey bool, isFirstKey bool, tree *MutableTree) error {
+	if key == nil {
+		return nil
+	}
+	rootHash := []byte(nil)
+	if isNewKey && !isFirstKey {
+		existenceProofs, err := tree.getExistenceProofsNeededForSet(key, value)
+		if err != nil {
+			return err
+		}
+		err = dst.AddExistenceProofs(existenceProofs, nil)
+		if err != nil {
+			return err
+		}
+		// Set key-value pair in IAVL tree
+		tree.Set(key, value)
+		tree.SaveVersion()
+	} else {
+		if tree.root != nil {
+			workingHash, err := tree.WorkingHash()
+			if err != nil {
+				return err
+			}
+			rootHash = workingHash
+		}
+
+		ics23proof := &ics23.CommitmentProof{}
+		if !isNewKey {
+			proof, err := tree.GetMembershipProof(key)
+			if err != nil {
+				return err
+			}
+			ics23proof = proof
+		}
+
+		// Set key-value pair in IAVL tree
+		tree.Set(key, value)
+		tree.SaveVersion()
+
+		if rootHash == nil {
+			workingHash, err := tree.WorkingHash()
+			if err != nil {
+				return err
+			}
+			rootHash = workingHash
+
+		}
+
+		if isNewKey {
+			proof, err := tree.GetMembershipProof(key)
+			if err != nil {
+				return err
+			}
+			ics23proof = proof
+		}
+
+		err := dst.AddExistenceProofs([]*ics23.ExistenceProof{
+			ics23proof.GetExist(),
+		}, rootHash,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	if !isFirstKey {
+		// Set key-value pair in DST
+		_, err := dst.Set(tree, key, value)
+		if err != nil {
+			return err
+		}
+	}
+
+	dst.SaveVersion()
+
+	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+	if err != nil {
+		return err
+	}
+	if !areEqual {
+		return errors.New("Add: Unequal roots for Deep subtree and IAVL tree")
+	}
+	return nil
+}
+
+func (dst *DeepSubTree) removeInDST(key []byte, tree *MutableTree) error {
+	if key == nil {
+		return nil
+	}
+	_, removed, err := dst.Remove(tree, key)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return fmt.Errorf("Remove: Unable to remove key: %s from DST", string(key))
+	}
+	dst.SaveVersion()
+
+	tree.Remove(key)
+	tree.SaveVersion()
+
+	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
+	if err != nil {
+		return err
+	}
+	if !areEqual {
+		return errors.New("Remove: Unequal roots for Deep subtree and IAVL tree")
+	}
+	return nil
+}
+
 func FuzzBatchAddReverse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		require := require.New(t)
@@ -314,94 +421,22 @@ func FuzzBatchAddReverse(f *testing.F) {
 			case Set:
 				isNewKey, keyToAdd, err := getKey(tree.ImmutableTree, keys, r, true)
 				require.NoError(err)
-				if keyToAdd == nil {
-					continue
-				}
 				// fmt.Printf("%d: Add: %s, %t\n", i, string(keyToAdd), isNewKey)
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
-				rootHash := []byte(nil)
-				if isNewKey && numKeys > 0 {
-					existenceProofs, err := tree.getExistenceProofsNeededForSet(keyToAdd, value)
-					require.NoError(err)
-					err = dst.AddExistenceProofs(existenceProofs, nil)
-					require.NoError(err)
-
-					// Set key-value pair in IAVL tree
-					tree.Set(keyToAdd, value)
-					tree.SaveVersion()
-				} else {
-					if tree.root != nil {
-						rootHash, err = tree.WorkingHash()
-						require.NoError(err)
-					}
-
-					ics23proof := &ics23.CommitmentProof{}
-					if !isNewKey {
-						ics23proof, err = tree.GetMembershipProof(keyToAdd)
-						require.NoError(err)
-					}
-
-					// Set key-value pair in IAVL tree
-					tree.Set(keyToAdd, value)
-					tree.SaveVersion()
-
-					if rootHash == nil {
-						rootHash, err = tree.WorkingHash()
-						require.NoError(err)
-					}
-
-					if isNewKey {
-						ics23proof, err = tree.GetMembershipProof(keyToAdd)
-						require.NoError(err)
-					}
-
-					err = dst.AddExistenceProofs([]*ics23.ExistenceProof{
-						ics23proof.GetExist(),
-					}, rootHash,
-					)
-					require.NoError(err)
-				}
-
-				if numKeys > 0 {
-					// Set key-value pair in DST
-					_, err = dst.Set(keyToAdd, value)
-					require.NoError(err)
-				}
-				dst.SaveVersion()
-
-				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
-				require.NoError(err)
-				if !areEqual {
-					t.Error("Add: Unequal roots for Deep subtree and IAVL tree")
+				err = dst.setInDST(keyToAdd, value, isNewKey, numKeys == 0, tree)
+				if err != nil {
+					t.Error(err)
 				}
 			case Remove:
 				_, keyToDelete, err := getKey(tree.ImmutableTree, keys, r, false)
 				require.NoError(err)
-				if keyToDelete == nil {
-					continue
-				}
 				// fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
-
-				existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
-				require.NoError(err)
-				err = dst.AddExistenceProofs(existenceProofs, nil)
-				require.NoError(err)
-				_, removed, err := dst.Remove(keyToDelete)
-				require.NoError(err)
-				require.True(removed)
-				dst.SaveVersion()
-
-				tree.Remove(keyToDelete)
-				tree.SaveVersion()
-
-				keys.Delete(string(keyToDelete))
-
-				areEqual, err := haveEqualRoots(dst.MutableTree, tree)
-				require.NoError(err)
-				if !areEqual {
-					t.Error("Remove: Unequal roots for Deep subtree and IAVL tree")
+				err = dst.removeInDST(keyToDelete, tree)
+				if err != nil {
+					t.Error(err)
 				}
+				keys.Delete(string(keyToDelete))
 			}
 		}
 		t.Log("Done")

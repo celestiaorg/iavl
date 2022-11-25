@@ -107,6 +107,8 @@ func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
 	}
 }
 
+// Adds the given into a set of keys accessed
+// Note: Used by Deep Subtrees to know which keys to add existence proofs for
 func (ndb *nodeDB) addTrace(key []byte) {
 	if ndb.keysAccessed == nil {
 		ndb.keysAccessed = make(set.Set[string])

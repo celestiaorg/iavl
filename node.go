@@ -473,6 +473,7 @@ func (node *Node) getLeftNode(t *ImmutableTree) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return leftNode, nil
 }
 
@@ -484,6 +485,7 @@ func (node *Node) getRightNode(t *ImmutableTree) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return rightNode, nil
 }
 

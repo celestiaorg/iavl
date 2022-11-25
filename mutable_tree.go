@@ -829,7 +829,6 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 		version = int64(tree.ndb.opts.InitialVersion)
 	}
 	tree.ndb.keysAccessed = make(set.Set[string])
-
 	if tree.VersionExists(version) {
 		// If the version already exists, return an error as we're attempting to overwrite.
 		// However, the same hash means idempotent (i.e. no-op).

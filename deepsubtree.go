@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/chrispappas/golang-generics-set/set"
 	ics23 "github.com/confio/ics23/go"
 	dbm "github.com/tendermint/tm-db"
 )
@@ -339,10 +340,11 @@ func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte
 	}
 
 	keysAccessed := tree.ndb.keysAccessed.Values()
+	tree.ndb.keysAccessed = make(set.Set[string])
 
 	tree.Rollback()
 
-	return tree.getExistenceProofsNeeded(keysAccessed)
+	return tree.reapInclusionProofs(keysAccessed)
 }
 
 func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
@@ -357,10 +359,13 @@ func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23
 	}
 
 	keysAccessed := tree.ndb.keysAccessed.Values()
+	tree.ndb.keysAccessed = make(set.Set[string])
 
 	tree.Rollback()
 
-	existenceProofs, err := tree.getExistenceProofsNeeded(keysAccessed)
+	keysAccessed = append(keysAccessed, string(key))
+
+	existenceProofs, err := tree.reapInclusionProofs(keysAccessed)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +373,7 @@ func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23
 	return existenceProofs, nil
 }
 
-func (tree *MutableTree) getExistenceProofsNeeded(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
+func (tree *MutableTree) reapInclusionProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
 	existenceProofs := make([]*ics23.ExistenceProof, 0)
 	for _, key := range keysAccessed {
 		ics23proof, err := tree.GetMembershipProof([]byte(key))

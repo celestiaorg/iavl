@@ -268,6 +268,29 @@ func readByte(r *bytes.Reader) byte {
 	return b
 }
 
+// Generates random new key half times and an existing key for the other half times.
+func getKey(tree *ImmutableTree, keys set.Set[string], r *bytes.Reader, genRandom bool) (isRandom bool, key []byte, err error) {
+	if genRandom && readByte(r) < math.MaxUint8/2 {
+		k := make([]byte, readByte(r)/2+1)
+		r.Read(k)
+		val, err := tree.Get(k)
+		if err != nil {
+			return false, nil, err
+		}
+		if val != nil {
+			return false, nil, nil
+		}
+		keys.Add(string(k))
+		return true, k, nil
+	}
+	if keys.Len() == 0 {
+		return false, nil, nil
+	}
+	keyList := keys.Values()
+	kString := keyList[int(readByte(r))%len(keys)]
+	return false, []byte(kString), nil
+}
+
 func FuzzBatchAddReverse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		require := require.New(t)
@@ -279,26 +302,6 @@ func FuzzBatchAddReverse(f *testing.F) {
 		dst := NewDeepSubTree(db.NewMemDB(), cacheSize, true, 0)
 		r := bytes.NewReader(input)
 		keys := make(set.Set[string])
-		// Generates random new key half times and an existing key for the other half times.
-		key := func(tree *ImmutableTree, genRandom bool) (isRandom bool, key []byte) {
-			if genRandom && readByte(r) < math.MaxUint8/2 {
-				k := make([]byte, readByte(r)/2)
-				r.Read(k)
-				val, err := tree.Get(k)
-				require.NoError(err)
-				if len(k) == 0 || val != nil {
-					return false, nil
-				}
-				keys.Add(string(k))
-				return true, k
-			}
-			if keys.Len() == 0 {
-				return false, nil
-			}
-			keyList := keys.Values()
-			kString := keyList[int(readByte(r))%len(keys)]
-			return false, []byte(kString)
-		}
 		for i := 0; r.Len() != 0; i++ {
 			b, err := r.ReadByte()
 			if err != nil {
@@ -309,7 +312,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 			numKeys := len(keys)
 			switch op {
 			case Set:
-				isNewKey, keyToAdd := key(tree.ImmutableTree, true)
+				isNewKey, keyToAdd, err := getKey(tree.ImmutableTree, keys, r, true)
+				require.NoError(err)
 				if keyToAdd == nil {
 					continue
 				}
@@ -372,7 +376,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 					t.Error("Add: Unequal roots for Deep subtree and IAVL tree")
 				}
 			case Remove:
-				_, keyToDelete := key(tree.ImmutableTree, false)
+				_, keyToDelete, err := getKey(tree.ImmutableTree, keys, r, false)
+				require.NoError(err)
 				if keyToDelete == nil {
 					continue
 				}

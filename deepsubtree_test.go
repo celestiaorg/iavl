@@ -221,18 +221,8 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	}
 	// Add non-existence proofs for keys we expect to add later
 	for i, keyToAdd := range keysToAdd {
-		tree.Set(keyToAdd, valuesToAdd[i])
-
-		keysAccessed := tree.ndb.keysAccessed.Values()
-
-		tree.Rollback()
-
-		existenceProofs := []*ics23.ExistenceProof{}
-		for _, key := range keysAccessed {
-			ics23proof, err := tree.GetMembershipProof([]byte(key))
-			require.NoError(err)
-			existenceProofs = append(existenceProofs, ics23proof.GetExist())
-		}
+		existenceProofs, err := tree.getExistenceProofsNeededForSet(keyToAdd, valuesToAdd[i])
+		require.NoError(err)
 		err = dst.AddExistenceProofs(existenceProofs)
 		require.NoError(err)
 		err = dst.BuildTree(rootHash)
@@ -339,18 +329,8 @@ func FuzzBatchAddReverse(f *testing.F) {
 				binary.BigEndian.PutUint64(value, uint64(i))
 				rootHash := []byte(nil)
 				if isNewKey && numKeys > 0 {
-					tree.Set(keyToAdd, value)
-
-					keysAccessed := tree.ndb.keysAccessed.Values()
-
-					tree.Rollback()
-
-					existenceProofs := []*ics23.ExistenceProof{}
-					for _, key := range keysAccessed {
-						ics23proof, err := tree.GetMembershipProof([]byte(key))
-						require.NoError(err)
-						existenceProofs = append(existenceProofs, ics23proof.GetExist())
-					}
+					existenceProofs, err := tree.getExistenceProofsNeededForSet(keyToAdd, value)
+					require.NoError(err)
 					err = dst.AddExistenceProofs(existenceProofs)
 					require.NoError(err)
 
@@ -423,21 +403,12 @@ func FuzzBatchAddReverse(f *testing.F) {
 				}
 				fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
 
-				tree.Remove(keyToDelete)
-
-				keysAccessed := tree.ndb.keysAccessed.Values()
-
-				tree.Rollback()
-
+				existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
+				require.NoError(err)
 				ics23proof, err := tree.GetMembershipProof(keyToDelete)
 				require.NoError(err)
-				existenceProofs := []*ics23.ExistenceProof{ics23proof.GetExist()}
-				for _, key := range keysAccessed {
-					ics23proof, err := tree.GetMembershipProof([]byte(key))
-					require.NoError(err)
-					existenceProofs = append(existenceProofs, ics23proof.GetExist())
+				existenceProofs = append(existenceProofs, ics23proof.GetExist())
 
-				}
 				err = dst.AddExistenceProofs(existenceProofs)
 				require.NoError(err)
 				rootHash, err := tree.WorkingHash()

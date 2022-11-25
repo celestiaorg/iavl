@@ -331,6 +331,34 @@ func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte,
 	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
 }
 
+func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte) ([]*ics23.ExistenceProof, error) {
+	tree.Set(key, value)
+
+	return tree.getExistenceProofsNeeded()
+}
+
+func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
+	tree.Remove(key)
+
+	return tree.getExistenceProofsNeeded()
+}
+
+func (tree *MutableTree) getExistenceProofsNeeded() ([]*ics23.ExistenceProof, error) {
+	keysAccessed := tree.ndb.keysAccessed.Values()
+
+	tree.Rollback()
+
+	existenceProofs := make([]*ics23.ExistenceProof, 0)
+	for _, key := range keysAccessed {
+		ics23proof, err := tree.GetMembershipProof([]byte(key))
+		if err != nil {
+			return nil, err
+		}
+		existenceProofs = append(existenceProofs, ics23proof.GetExist())
+	}
+	return existenceProofs, nil
+}
+
 func recomputeHash(node *Node) error {
 	if node.leftHash == nil && node.leftNode != nil {
 		leftHash, err := node.leftNode._hash()

@@ -54,7 +54,7 @@ func (node *Node) updateInnerNodeKey() {
 // Traverses the nodes in the NodeDB that are part of Deep Subtree
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
-func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
+func (dst *DeepSubTree) buildTree(rootHash []byte) error {
 	workingHash, err := dst.WorkingHash()
 	if err != nil {
 		return err
@@ -488,7 +488,7 @@ func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistencePro
 		rootHash = workingHash
 	}
 
-	err := dst.BuildTree(rootHash)
+	err := dst.buildTree(rootHash)
 	if err != nil {
 		return err
 	}

@@ -51,12 +51,8 @@ func TestEmptyDeepSubtree(t *testing.T) {
 	}
 
 	tree := getTree()
-	rootHash, err := tree.WorkingHash()
-	require.NoError(err)
 
 	dst := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
-	err = dst.BuildTree(rootHash)
-	require.NoError(err)
 
 	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 	require.NoError(err)

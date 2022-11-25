@@ -269,8 +269,16 @@ func readByte(r *bytes.Reader) byte {
 	return b
 }
 
+type testContext struct {
+	r    *bytes.Reader
+	tree *MutableTree
+	dst  *DeepSubTree
+	keys set.Set[string]
+}
+
 // Generates random new key half times and an existing key for the other half times.
-func getKey(tree *ImmutableTree, keys set.Set[string], r *bytes.Reader, genRandom bool) (isRandom bool, key []byte, err error) {
+func (tc *testContext) getKey(genRandom bool) (isRandom bool, key []byte, err error) {
+	tree, r, keys := tc.tree, tc.r, tc.keys
 	if genRandom && readByte(r) < math.MaxUint8/2 {
 		k := make([]byte, readByte(r)/2+1)
 		r.Read(k)
@@ -292,13 +300,15 @@ func getKey(tree *ImmutableTree, keys set.Set[string], r *bytes.Reader, genRando
 	return false, []byte(kString), nil
 }
 
-func (dst *DeepSubTree) setInDST(key []byte, value []byte, isNewKey bool, isFirstKey bool, tree *MutableTree) error {
+func (tc *testContext) setInDST(key []byte, value []byte, isNewKey bool) error {
 	if key == nil {
 		return nil
 	}
+	tree, dst := tc.tree, tc.dst
 	rootHash := []byte(nil)
+	isFirstKey := tree.root == nil
 	if isNewKey && !isFirstKey {
-		existenceProofs, err := tree.getExistenceProofsNeededForSet(key, value)
+		existenceProofs, err := tc.tree.getExistenceProofsNeededForSet(key, value)
 		if err != nil {
 			return err
 		}
@@ -377,10 +387,11 @@ func (dst *DeepSubTree) setInDST(key []byte, value []byte, isNewKey bool, isFirs
 	return nil
 }
 
-func (dst *DeepSubTree) removeInDST(key []byte, tree *MutableTree) error {
+func (tc *testContext) removeInDST(key []byte) error {
 	if key == nil {
 		return nil
 	}
+	tree, dst := tc.tree, tc.dst
 	existenceProofs, err := tree.getExistenceProofsNeededForRemove(key)
 	if err != nil {
 		return err
@@ -429,23 +440,28 @@ func FuzzBatchAddReverse(f *testing.F) {
 			}
 			op := op(int(b) % int(Noop))
 			require.NoError(err)
-			numKeys := len(keys)
+			tc := testContext{
+				r,
+				tree,
+				dst,
+				keys,
+			}
 			switch op {
 			case Set:
-				isNewKey, keyToAdd, err := getKey(tree.ImmutableTree, keys, r, true)
+				isNewKey, keyToAdd, err := tc.getKey(true)
 				require.NoError(err)
 				// fmt.Printf("%d: Add: %s, %t\n", i, string(keyToAdd), isNewKey)
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
-				err = dst.setInDST(keyToAdd, value, isNewKey, numKeys == 0, tree)
+				err = tc.setInDST(keyToAdd, value, isNewKey)
 				if err != nil {
 					t.Error(err)
 				}
 			case Remove:
-				_, keyToDelete, err := getKey(tree.ImmutableTree, keys, r, false)
+				_, keyToDelete, err := tc.getKey(false)
 				require.NoError(err)
 				// fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
-				err = dst.removeInDST(keyToDelete, tree)
+				err = tc.removeInDST(keyToDelete)
 				if err != nil {
 					t.Error(err)
 				}

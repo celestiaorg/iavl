@@ -337,14 +337,9 @@ func FuzzBatchAddReverse(f *testing.F) {
 					}
 
 					ics23proof := &ics23.CommitmentProof{}
-					flag := false
-
-					has, err := tree.Has(keyToAdd)
-					require.NoError(err)
-					if !isNewKey && has {
+					if !isNewKey {
 						ics23proof, err = tree.GetMembershipProof(keyToAdd)
 						require.NoError(err)
-						flag = true
 					}
 
 					// Set key-value pair in IAVL tree
@@ -356,7 +351,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 						require.NoError(err)
 					}
 
-					if !flag {
+					if isNewKey {
 						ics23proof, err = tree.GetMembershipProof(keyToAdd)
 						require.NoError(err)
 					}

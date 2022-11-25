@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/chrispappas/golang-generics-set/set"
 	"github.com/pkg/errors"
 	dbm "github.com/tendermint/tm-db"
 
@@ -79,6 +80,7 @@ type nodeDB struct {
 	latestVersion  int64            // Latest version of nodeDB.
 	nodeCache      cache.Cache      // Cache for nodes in the regular tree that consists of key-value pairs at any version.
 	fastNodeCache  cache.Cache      // Cache for nodes in the fast index that represents only key-value pairs at the latest version.
+	keysAccessed   set.Set[string]
 }
 
 func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
@@ -105,6 +107,13 @@ func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
 	}
 }
 
+func (ndb *nodeDB) addTrace(key []byte) {
+	if ndb.keysAccessed == nil {
+		ndb.keysAccessed = make(set.Set[string])
+	}
+	ndb.keysAccessed.Add(string(key))
+}
+
 // GetNode gets a node from memory or disk. If it is an inner node, it does not
 // load its children.
 func (ndb *nodeDB) GetNode(hash []byte) (*Node, error) {
@@ -118,6 +127,7 @@ func (ndb *nodeDB) GetNode(hash []byte) (*Node, error) {
 	// Check the cache.
 	if cachedNode := ndb.nodeCache.Get(hash); cachedNode != nil {
 		ndb.opts.Stat.IncCacheHitCnt()
+		ndb.addTrace(cachedNode.(*Node).key)
 		return cachedNode.(*Node), nil
 	}
 
@@ -140,6 +150,7 @@ func (ndb *nodeDB) GetNode(hash []byte) (*Node, error) {
 	node.hash = hash
 	node.persisted = true
 	ndb.nodeCache.Add(node)
+	ndb.addTrace(node.key)
 
 	return node, nil
 }
@@ -1007,6 +1018,7 @@ func (ndb *nodeDB) orphans() ([][]byte, error) {
 // Not efficient.
 // NOTE: DB cannot implement Size() because
 // mutations are not always synchronous.
+//
 //nolint:unused
 func (ndb *nodeDB) size() int {
 	size := 0

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chrispappas/golang-generics-set/set"
 	dbm "github.com/tendermint/tm-db"
 )
 
@@ -19,7 +18,6 @@ type ImmutableTree struct {
 	ndb                    *nodeDB
 	version                int64
 	skipFastStorageUpgrade bool
-	keysAccessed           set.Set[string]
 }
 
 // NewImmutableTree creates both in-memory and persistent instances

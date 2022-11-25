@@ -3,6 +3,7 @@ package iavl
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"testing"
 
@@ -219,12 +220,20 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		{3}, {4},
 	}
 	// Add non-existence proofs for keys we expect to add later
-	for _, keyToAdd := range keysToAdd {
-		ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
-		require.NoError(err)
-		dst_nonExistenceProof, err := GetSiblingExistenceProofsNonExistence(tree, ics23proof.GetNonexist())
-		require.NoError(err)
-		err = dst.AddExistenceProofs(dst_nonExistenceProof)
+	for i, keyToAdd := range keysToAdd {
+		tree.Set(keyToAdd, valuesToAdd[i])
+
+		keysAccessed := tree.ndb.keysAccessed.Values()
+
+		tree.Rollback()
+
+		existenceProofs := []*ics23.ExistenceProof{}
+		for _, key := range keysAccessed {
+			ics23proof, err := tree.GetMembershipProof([]byte(key))
+			require.NoError(err)
+			existenceProofs = append(existenceProofs, ics23proof.GetExist())
+		}
+		err = dst.AddExistenceProofs(existenceProofs)
 		require.NoError(err)
 		err = dst.BuildTree(rootHash)
 		require.NoError(err)
@@ -330,12 +339,19 @@ func FuzzBatchAddReverse(f *testing.F) {
 				binary.BigEndian.PutUint64(value, uint64(i))
 				rootHash := []byte(nil)
 				if isNewKey && numKeys > 0 {
-					// Add existence proof for new key
-					ics23proof, err := tree.GetNonMembershipProof(keyToAdd)
-					require.NoError(err)
-					dst_nonExistenceProof, err := GetSiblingExistenceProofsNonExistence(tree, ics23proof.GetNonexist())
-					require.NoError(err)
-					err = dst.AddExistenceProofs(dst_nonExistenceProof)
+					tree.Set(keyToAdd, value)
+
+					keysAccessed := tree.ndb.keysAccessed.Values()
+
+					tree.Rollback()
+
+					existenceProofs := []*ics23.ExistenceProof{}
+					for _, key := range keysAccessed {
+						ics23proof, err := tree.GetMembershipProof([]byte(key))
+						require.NoError(err)
+						existenceProofs = append(existenceProofs, ics23proof.GetExist())
+					}
+					err = dst.AddExistenceProofs(existenceProofs)
 					require.NoError(err)
 
 					rootHash, err = tree.WorkingHash()
@@ -405,12 +421,11 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if keyToDelete == nil {
 					continue
 				}
-				// fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
+				fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
 
 				tree.Remove(keyToDelete)
 
-				keysAccessed := tree.keysAccessed.Values()
-				_ = keysAccessed
+				keysAccessed := tree.ndb.keysAccessed.Values()
 
 				tree.Rollback()
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 
+	"github.com/chrispappas/golang-generics-set/set"
 	"github.com/cosmos/iavl/cache"
 	"github.com/pkg/errors"
 
@@ -466,26 +467,42 @@ func (node *Node) writeBytes(w io.Writer) error {
 }
 
 func (node *Node) getLeftNode(t *ImmutableTree) (*Node, error) {
+	if t != nil && t.keysAccessed == nil {
+		t.keysAccessed = make(set.Set[string], 0)
+	}
 	if node.leftNode != nil {
+		if t != nil {
+			t.keysAccessed.Add(string(node.leftNode.key))
+		}
 		return node.leftNode, nil
 	}
 	leftNode, err := t.ndb.GetNode(node.leftHash)
 	if err != nil {
 		return nil, err
 	}
-
+	if t != nil {
+		t.keysAccessed.Add(string(leftNode.key))
+	}
 	return leftNode, nil
 }
 
 func (node *Node) getRightNode(t *ImmutableTree) (*Node, error) {
+	if t != nil && t.keysAccessed == nil {
+		t.keysAccessed = make(set.Set[string], 0)
+	}
 	if node.rightNode != nil {
+		if t != nil {
+			t.keysAccessed.Add(string(node.rightNode.key))
+		}
 		return node.rightNode, nil
 	}
 	rightNode, err := t.ndb.GetNode(node.rightHash)
 	if err != nil {
 		return nil, err
 	}
-
+	if t != nil {
+		t.keysAccessed.Add(string(rightNode.key))
+	}
 	return rightNode, nil
 }
 

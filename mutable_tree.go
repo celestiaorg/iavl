@@ -827,6 +827,9 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	if version == 1 && tree.ndb.opts.InitialVersion > 0 {
 		version = int64(tree.ndb.opts.InitialVersion)
 	}
+	for k := range tree.keysAccessed {
+		delete(tree.keysAccessed, k)
+	}
 
 	if tree.VersionExists(version) {
 		// If the version already exists, return an error as we're attempting to overwrite.

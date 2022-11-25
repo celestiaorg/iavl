@@ -325,6 +325,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if keyToAdd == nil {
 					continue
 				}
+				// fmt.Printf("%d: Add: %s, %t\n", i, string(keyToAdd), isNewKey)
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
 				rootHash := []byte(nil)
@@ -404,12 +405,24 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if keyToDelete == nil {
 					continue
 				}
+				// fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
+
+				tree.Remove(keyToDelete)
+
+				keysAccessed := tree.keysAccessed.Values()
+				_ = keysAccessed
+
+				tree.Rollback()
 
 				ics23proof, err := tree.GetMembershipProof(keyToDelete)
 				require.NoError(err)
-				existenceProofs, err := tree.GetSiblingExistenceProofs(keyToDelete)
-				require.NoError(err)
-				existenceProofs = append(existenceProofs, ics23proof.GetExist())
+				existenceProofs := []*ics23.ExistenceProof{ics23proof.GetExist()}
+				for _, key := range keysAccessed {
+					ics23proof, err := tree.GetMembershipProof([]byte(key))
+					require.NoError(err)
+					existenceProofs = append(existenceProofs, ics23proof.GetExist())
+
+				}
 				err = dst.AddExistenceProofs(existenceProofs)
 				require.NoError(err)
 				rootHash, err := tree.WorkingHash()

@@ -3,7 +3,6 @@ package iavl
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"math"
 	"testing"
 
@@ -325,9 +324,7 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if isNewKey && numKeys > 0 {
 					existenceProofs, err := tree.getExistenceProofsNeededForSet(keyToAdd, value)
 					require.NoError(err)
-					rootHash, err = tree.WorkingHash()
-					require.NoError(err)
-					err = dst.AddExistenceProofs(existenceProofs, rootHash)
+					err = dst.AddExistenceProofs(existenceProofs, nil)
 					require.NoError(err)
 
 					// Set key-value pair in IAVL tree
@@ -388,13 +385,11 @@ func FuzzBatchAddReverse(f *testing.F) {
 				if keyToDelete == nil {
 					continue
 				}
-				fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
+				// fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
 
 				existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
 				require.NoError(err)
-				rootHash, err := tree.WorkingHash()
-				require.NoError(err)
-				err = dst.AddExistenceProofs(existenceProofs, rootHash)
+				err = dst.AddExistenceProofs(existenceProofs, nil)
 				require.NoError(err)
 				_, removed, err := dst.Remove(keyToDelete)
 				require.NoError(err)

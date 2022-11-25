@@ -480,6 +480,14 @@ func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistencePro
 			return err
 		}
 	}
+	if rootHash == nil {
+		workingHash, err := dst.WorkingHash()
+		if err != nil {
+			return err
+		}
+		rootHash = workingHash
+	}
+
 	err := dst.BuildTree(rootHash)
 	if err != nil {
 		return err

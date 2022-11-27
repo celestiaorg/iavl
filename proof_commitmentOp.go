@@ -62,7 +62,7 @@ func CommitmentOpDecoder(pop tmmerkle.ProofOp) (*CommitmentOp, error) {
 		Spec:  spec,
 		Proof: proof,
 	}
-	return op, nil
+	return &op, nil
 }
 
 func (op CommitmentOp) GetKey() []byte {

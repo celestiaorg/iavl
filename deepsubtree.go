@@ -133,26 +133,34 @@ func convertToExistenceProofs(proofs []crypto.ProofOp) ([]*ics23.ExistenceProof,
 	return existenceProofs, nil
 }
 
-// Set sets a key in the working tree with the given value.
-func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
+func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value []byte) error {
 	// Verify operation is on top, look at the witness data and add the relevant existence proofs
 	if dst.witnessData != nil && dst.operationCounter < len(dst.witnessData) {
 		traceOp := dst.witnessData[dst.operationCounter]
-		if traceOp.Operation != "write" || !bytes.Equal(traceOp.Key, key) || !bytes.Equal(traceOp.Value, value) {
-			return false,
-				fmt.Errorf("traceOp in witnessData: %s, %s, %s does not match up with write operation for key: %s, value: %s",
-					traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
-				)
+		if traceOp.Operation != operation || !bytes.Equal(traceOp.Key, key) || !bytes.Equal(traceOp.Value, value) {
+			return fmt.Errorf(
+				"traceOp in witnessData: %s, %s, %s does not match up with write operation for key: %s, value: %s",
+				traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
+			)
 		}
 		existenceProofs, err := convertToExistenceProofs(traceOp.Proofs)
 		if err != nil {
-			return false, err
+			return err
 		}
 		err = dst.AddExistenceProofs(existenceProofs, nil)
 		if err != nil {
-			return false, err
+			return err
 		}
 		dst.operationCounter++
+	}
+	return nil
+}
+
+// Set sets a key in the working tree with the given value.
+func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
+	err = dst.verifyOperation("write", key, value)
+	if err != nil {
+		return false, err
 	}
 	return dst.set(key, value)
 }
@@ -259,9 +267,39 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	return newNode, updated, err
 }
 
+// Get returns the value of the specified key if it exists, or nil otherwise.
+// The returned value must not be modified, since it may point to data stored within IAVL.
+func (dst *DeepSubTree) Get(key []byte) (value []byte, err error) {
+	err = dst.verifyOperation("read", key, nil)
+	if err != nil {
+		return nil, err
+	}
+	return dst.get(key)
+}
+
+// Get returns the value of the specified key if it exists, or nil otherwise.
+// The returned value must not be modified, since it may point to data stored within IAVL.
+func (dst *DeepSubTree) get(key []byte) ([]byte, error) {
+	if dst.root == nil {
+		return nil, nil
+	}
+
+	return dst.ImmutableTree.Get(key)
+}
+
 // Remove tries to remove a key from the tree and if removed, returns its
-// value, nodes orphaned and 'true'.
+// value, and 'true'.
 func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err error) {
+	err = dst.verifyOperation("delete", key, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	return dst.remove(key)
+}
+
+// Remove tries to remove a key from the tree and if removed, returns its
+// value, and 'true'.
+func (dst *DeepSubTree) remove(key []byte) (value []byte, removed bool, err error) {
 	if dst.root == nil {
 		return nil, false, nil
 	}

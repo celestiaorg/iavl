@@ -140,9 +140,8 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		tree := getTree()
 		rootHash, err := tree.WorkingHash()
 		require.NoError(err)
-		mutableTree, err := NewMutableTree(db.NewMemDB(), 100, true)
+		dst := NewDeepSubTree(db.NewMemDB(), 100, true, 0)
 		require.NoError(err)
-		dst := DeepSubTree{mutableTree}
 		for _, subsetKey := range subsetKeys {
 			ics23proof, err := tree.GetMembershipProof(subsetKey)
 			require.NoError(err)
@@ -193,9 +192,8 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	}
 	rootHash, err := tree.WorkingHash()
 	require.NoError(err)
-	mutableTree, err := NewMutableTree(db.NewMemDB(), 100, true)
+	dst := NewDeepSubTree(db.NewMemDB(), 100, true, 0)
 	require.NoError(err)
-	dst := DeepSubTree{mutableTree}
 	for _, subsetKey := range subsetKeys {
 		ics23proof, err := tree.GetMembershipProof(subsetKey)
 		require.NoError(err)

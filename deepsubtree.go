@@ -21,8 +21,8 @@ const (
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
-	// witnessData WitnessData
-	// counter     int
+	witnessData      []WitnessData
+	operationCounter int
 }
 
 // NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
@@ -40,7 +40,7 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 		ndb:                      ndb,
 		skipFastStorageUpgrade:   skipFastStorageUpgrade,
 	}
-	return &DeepSubTree{MutableTree: mutableTree}
+	return &DeepSubTree{MutableTree: mutableTree, witnessData: nil, operationCounter: 0}
 }
 
 func (node *Node) updateInnerNodeKey() {
@@ -120,9 +120,12 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 }
 
 // Set sets a key in the working tree with the given value.
-// Assumption: Node with given key already exists and is a leaf node.
-// Modified version of set taken from mutable_tree.go
 func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
+	return dst.set(key, value)
+}
+
+// Set sets a key in the working tree with the given value.
+func (dst *DeepSubTree) set(key []byte, value []byte) (updated bool, err error) {
 	if value == nil {
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
 	}

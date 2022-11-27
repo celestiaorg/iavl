@@ -213,7 +213,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	}
 	// Add non-existence proofs for keys we expect to add later
 	for i, keyToAdd := range keysToAdd {
-		existenceProofs, err := tree.getExistenceProofsNeededForSet(keyToAdd, valuesToAdd[i])
+		existenceProofs, err := tree.GetExistenceProofsNeededForSet(keyToAdd, valuesToAdd[i])
 		require.NoError(err)
 		err = dst.AddExistenceProofs(existenceProofs, rootHash)
 		require.NoError(err)
@@ -244,7 +244,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for i := range keysToAdd {
 		keyToDelete := keysToAdd[i]
 
-		existenceProofs, err := tree.getExistenceProofsNeededForRemove(keyToDelete)
+		existenceProofs, err := tree.GetExistenceProofsNeededForRemove(keyToDelete)
 		require.NoError(err)
 		err = dst.AddExistenceProofs(existenceProofs, nil)
 		require.NoError(err)
@@ -304,7 +304,7 @@ func (tc *testContext) setInDST(key []byte, value []byte) error {
 		return nil
 	}
 	tree, dst := tc.tree, tc.dst
-	existenceProofs, err := tc.tree.getExistenceProofsNeededForSet(key, value)
+	existenceProofs, err := tc.tree.GetExistenceProofsNeededForSet(key, value)
 	if err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func (tc *testContext) removeInDST(key []byte) error {
 		return nil
 	}
 	tree, dst := tc.tree, tc.dst
-	existenceProofs, err := tree.getExistenceProofsNeededForRemove(key)
+	existenceProofs, err := tree.GetExistenceProofsNeededForRemove(key)
 	if err != nil {
 		return err
 	}

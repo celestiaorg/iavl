@@ -338,7 +338,7 @@ func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte,
 	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
 }
 
-func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte) ([]*ics23.ExistenceProof, error) {
+func (tree *MutableTree) GetExistenceProofsNeededForSet(key []byte, value []byte) ([]*ics23.ExistenceProof, error) {
 	_, err := tree.Set(key, value)
 
 	if err != nil {
@@ -353,7 +353,7 @@ func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte
 	return tree.reapInclusionProofs(keysAccessed)
 }
 
-func (tree *MutableTree) getExistenceProofsNeededForGet(key []byte) ([]*ics23.ExistenceProof, error) {
+func (tree *MutableTree) GetExistenceProofsNeededForGet(key []byte) ([]*ics23.ExistenceProof, error) {
 	_, err := tree.Get(key)
 
 	if err != nil {
@@ -366,7 +366,7 @@ func (tree *MutableTree) getExistenceProofsNeededForGet(key []byte) ([]*ics23.Ex
 	return tree.reapInclusionProofs(keysAccessed)
 }
 
-func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
+func (tree *MutableTree) GetExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
 	ics23proof, err := tree.GetMembershipProof(key)
 	if err != nil {
 		return nil, err

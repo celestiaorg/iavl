@@ -353,6 +353,19 @@ func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte
 	return tree.reapInclusionProofs(keysAccessed)
 }
 
+func (tree *MutableTree) getExistenceProofsNeededForGet(key []byte) ([]*ics23.ExistenceProof, error) {
+	_, err := tree.Get(key)
+
+	if err != nil {
+		return nil, err
+	}
+
+	keysAccessed := tree.ndb.keysAccessed.Values()
+	tree.ndb.keysAccessed = make(set.Set[string])
+
+	return tree.reapInclusionProofs(keysAccessed)
+}
+
 func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
 	ics23proof, err := tree.GetMembershipProof(key)
 	if err != nil {

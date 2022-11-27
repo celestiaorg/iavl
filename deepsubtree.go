@@ -9,6 +9,7 @@ import (
 
 	"github.com/chrispappas/golang-generics-set/set"
 	ics23 "github.com/confio/ics23/go"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 	dbm "github.com/tendermint/tm-db"
 )
 
@@ -119,8 +120,40 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 	return nil
 }
 
+func convertToExistenceProofs(proofs []crypto.ProofOp) ([]*ics23.ExistenceProof, error) {
+	existenceProofs := make([]*ics23.ExistenceProof, 0)
+	for _, proof := range proofs {
+		proofOp, err := CommitmentOpDecoder(proof)
+		if err != nil {
+			return nil, err
+		}
+		commitmentProof := proofOp.GetProof()
+		existenceProofs = append(existenceProofs, commitmentProof.GetExist())
+	}
+	return existenceProofs, nil
+}
+
 // Set sets a key in the working tree with the given value.
 func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
+	// Verify operation is on top, look at the witness data and add the relevant existence proofs
+	if dst.witnessData != nil && dst.operationCounter < len(dst.witnessData) {
+		traceOp := dst.witnessData[dst.operationCounter]
+		if traceOp.Operation != "write" || !bytes.Equal(traceOp.Key, key) || !bytes.Equal(traceOp.Value, value) {
+			return false,
+				fmt.Errorf("traceOp in witnessData: %s, %s, %s does not match up with write operation for key: %s, value: %s",
+					traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
+				)
+		}
+		existenceProofs, err := convertToExistenceProofs(traceOp.Proofs)
+		if err != nil {
+			return false, err
+		}
+		err = dst.AddExistenceProofs(existenceProofs, nil)
+		if err != nil {
+			return false, err
+		}
+		dst.operationCounter++
+	}
 	return dst.set(key, value)
 }
 
@@ -135,7 +168,6 @@ func (dst *DeepSubTree) set(key []byte, value []byte) (updated bool, err error) 
 		return updated, nil
 	}
 
-	// TODO: verify operation is on top, look at the witness data and add the relevant existence proofs
 	dst.root, updated, err = dst.recursiveSet(dst.root, key, value)
 	if err != nil {
 		return updated, err

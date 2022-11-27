@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/chrispappas/golang-generics-set/set"
-
 	ics23 "github.com/confio/ics23/go"
 
 	"github.com/stretchr/testify/require"
@@ -160,7 +159,7 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 
 		values := [][]byte{{10}, {20}}
 		for i, subsetKey := range subsetKeys {
-			dst.Set(tree, subsetKey, values[i])
+			dst.Set(subsetKey, values[i])
 			dst.SaveVersion()
 			tree.Set(subsetKey, values[i])
 			tree.SaveVersion()
@@ -231,7 +230,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	for i := range keysToAdd {
 		keyToAdd := keysToAdd[i]
 		valueToAdd := valuesToAdd[i]
-		dst.Set(tree, keyToAdd, valueToAdd)
+		dst.Set(keyToAdd, valueToAdd)
 		dst.SaveVersion()
 		tree.Set(keyToAdd, valueToAdd)
 		tree.SaveVersion()
@@ -250,7 +249,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		err = dst.AddExistenceProofs(existenceProofs, nil)
 		require.NoError(err)
 
-		dst.Remove(tree, keyToDelete)
+		dst.Remove(keyToDelete)
 		dst.SaveVersion()
 		tree.Remove(keyToDelete)
 		tree.SaveVersion()
@@ -277,105 +276,53 @@ type testContext struct {
 }
 
 // Generates random new key half times and an existing key for the other half times.
-func (tc *testContext) getKey(genRandom bool) (isRandom bool, key []byte, err error) {
+func (tc *testContext) getKey(genRandom bool) (key []byte, err error) {
 	tree, r, keys := tc.tree, tc.r, tc.keys
 	if genRandom && readByte(r) < math.MaxUint8/2 {
 		k := make([]byte, readByte(r)/2+1)
 		r.Read(k)
 		val, err := tree.Get(k)
 		if err != nil {
-			return false, nil, err
+			return nil, err
 		}
 		if val != nil {
-			return false, nil, nil
+			return nil, nil
 		}
 		keys.Add(string(k))
-		return true, k, nil
+		return k, nil
 	}
 	if keys.Len() == 0 {
-		return false, nil, nil
+		return nil, nil
 	}
 	keyList := keys.Values()
 	kString := keyList[int(readByte(r))%len(keys)]
-	return false, []byte(kString), nil
+	return []byte(kString), nil
 }
 
-func (tc *testContext) setInDST(key []byte, value []byte, isNewKey bool) error {
+func (tc *testContext) setInDST(key []byte, value []byte) error {
 	if key == nil {
 		return nil
 	}
 	tree, dst := tc.tree, tc.dst
-	rootHash := []byte(nil)
-	isFirstKey := tree.root == nil
-	if isNewKey && !isFirstKey {
-		existenceProofs, err := tc.tree.getExistenceProofsNeededForSet(key, value)
-		if err != nil {
-			return err
-		}
-		err = dst.AddExistenceProofs(existenceProofs, nil)
-		if err != nil {
-			return err
-		}
-		// Set key-value pair in IAVL tree
-		tree.Set(key, value)
-		tree.SaveVersion()
-	} else {
-		if tree.root != nil {
-			workingHash, err := tree.WorkingHash()
-			if err != nil {
-				return err
-			}
-			rootHash = workingHash
-		}
-
-		ics23proof := &ics23.CommitmentProof{}
-		if !isNewKey {
-			proof, err := tree.GetMembershipProof(key)
-			if err != nil {
-				return err
-			}
-			ics23proof = proof
-		}
-
-		// Set key-value pair in IAVL tree
-		tree.Set(key, value)
-		tree.SaveVersion()
-
-		if rootHash == nil {
-			workingHash, err := tree.WorkingHash()
-			if err != nil {
-				return err
-			}
-			rootHash = workingHash
-
-		}
-
-		if isNewKey {
-			proof, err := tree.GetMembershipProof(key)
-			if err != nil {
-				return err
-			}
-			ics23proof = proof
-		}
-
-		err := dst.AddExistenceProofs([]*ics23.ExistenceProof{
-			ics23proof.GetExist(),
-		}, rootHash,
-		)
-		if err != nil {
-			return err
-		}
+	existenceProofs, err := tc.tree.getExistenceProofsNeededForSet(key, value)
+	if err != nil {
+		return err
+	}
+	err = dst.AddExistenceProofs(existenceProofs, nil)
+	if err != nil {
+		return err
 	}
 
-	if !isFirstKey {
-		// Set key-value pair in DST
-		_, err := dst.Set(tree, key, value)
-		if err != nil {
-			return err
-		}
+	// Set key-value pair in DST
+	_, err = dst.Set(key, value)
+	if err != nil {
+		return err
 	}
-
 	dst.SaveVersion()
+
+	// Set key-value pair in IAVL tree
+	tree.Set(key, value)
+	tree.SaveVersion()
 
 	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 	if err != nil {
@@ -400,7 +347,7 @@ func (tc *testContext) removeInDST(key []byte) error {
 	if err != nil {
 		return err
 	}
-	_, removed, err := dst.Remove(tree, key)
+	_, removed, err := dst.Remove(key)
 	if err != nil {
 		return err
 	}
@@ -448,17 +395,17 @@ func FuzzBatchAddReverse(f *testing.F) {
 			}
 			switch op {
 			case Set:
-				isNewKey, keyToAdd, err := tc.getKey(true)
+				keyToAdd, err := tc.getKey(true)
 				require.NoError(err)
 				// fmt.Printf("%d: Add: %s, %t\n", i, string(keyToAdd), isNewKey)
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
-				err = tc.setInDST(keyToAdd, value, isNewKey)
+				err = tc.setInDST(keyToAdd, value)
 				if err != nil {
 					t.Error(err)
 				}
 			case Remove:
-				_, keyToDelete, err := tc.getKey(false)
+				keyToDelete, err := tc.getKey(false)
 				require.NoError(err)
 				// fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
 				err = tc.removeInDST(keyToDelete)

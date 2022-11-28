@@ -44,6 +44,11 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 	return &DeepSubTree{MutableTree: mutableTree, witnessData: nil, operationCounter: 0}
 }
 
+func (dst *DeepSubTree) SetWitnessData(witnessData []WitnessData) {
+	dst.witnessData = witnessData
+	dst.operationCounter = 0
+}
+
 func (node *Node) updateInnerNodeKey() {
 	if node.leftNode != nil {
 		node.key = node.leftNode.getHighestKey()

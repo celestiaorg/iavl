@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chrispappas/golang-generics-set/set"
 	ics23 "github.com/confio/ics23/go"
 	dbm "github.com/tendermint/tm-db"
 )
@@ -126,31 +125,39 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 
 func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value []byte) error {
 	// Verify operation is on top, look at the witness data and add the relevant existence proofs
-	if dst.witnessData != nil && dst.operationCounter < len(dst.witnessData) {
-		traceOp := dst.witnessData[dst.operationCounter]
-		if traceOp.Operation != operation || !bytes.Equal(traceOp.Key, key) || !bytes.Equal(traceOp.Value, value) {
-			return fmt.Errorf(
-				"traceOp in witnessData: %s, %s, %s does not match up with write operation for key: %s, value: %s",
-				traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
-			)
-		}
-		workingHash, err := dst.WorkingHash()
-		if err != nil {
-			return err
-		}
-		// Verify proofs against current rootHash
-		for _, proof := range traceOp.Proofs {
-			err := proof.Verify(ics23.IavlSpec, workingHash, proof.Key, proof.Value)
-			if err != nil {
-				return err
-			}
-		}
-		err = dst.AddExistenceProofs(traceOp.Proofs, nil)
-		if err != nil {
-			return err
-		}
-		dst.operationCounter++
+	if dst.witnessData == nil {
+		return errors.New("witness data in deep subtree is nil")
 	}
+	if dst.operationCounter >= len(dst.witnessData) {
+		return fmt.Errorf(
+			"operation counter in witness data: %d should be less than length of witness data: %d",
+			dst.operationCounter,
+			len(dst.witnessData),
+		)
+	}
+	traceOp := dst.witnessData[dst.operationCounter]
+	if traceOp.Operation != operation || !bytes.Equal(traceOp.Key, key) || !bytes.Equal(traceOp.Value, value) {
+		return fmt.Errorf(
+			"traceOp in witnessData: %s, %s, %s does not match up with write operation for key: %s, value: %s",
+			traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
+		)
+	}
+	workingHash, err := dst.WorkingHash()
+	if err != nil {
+		return err
+	}
+	// Verify proofs against current rootHash
+	for _, proof := range traceOp.Proofs {
+		err := proof.Verify(ics23.IavlSpec, workingHash, proof.Key, proof.Value)
+		if err != nil {
+			return err
+		}
+	}
+	err = dst.AddExistenceProofs(traceOp.Proofs, nil)
+	if err != nil {
+		return err
+	}
+	dst.operationCounter++
 	return nil
 }
 
@@ -407,59 +414,6 @@ func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte,
 		return newNode.hash, newNode, nil, nil
 	}
 	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
-}
-
-func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte) ([]*ics23.ExistenceProof, error) {
-	_, err := tree.Set(key, value)
-
-	if err != nil {
-		return nil, err
-	}
-
-	keysAccessed := tree.ndb.keysAccessed.Values()
-	tree.ndb.keysAccessed = make(set.Set[string])
-
-	tree.Rollback()
-
-	return tree.reapInclusionProofs(keysAccessed)
-}
-
-func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
-	ics23proof, err := tree.GetMembershipProof(key)
-	if err != nil {
-		return nil, err
-	}
-
-	_, _, err = tree.Remove(key)
-	if err != nil {
-		return nil, err
-	}
-
-	keysAccessed := tree.ndb.keysAccessed.Values()
-	tree.ndb.keysAccessed = make(set.Set[string])
-
-	tree.Rollback()
-
-	keysAccessed = append(keysAccessed, string(key))
-
-	existenceProofs, err := tree.reapInclusionProofs(keysAccessed)
-	if err != nil {
-		return nil, err
-	}
-	existenceProofs = append(existenceProofs, ics23proof.GetExist())
-	return existenceProofs, nil
-}
-
-func (tree *MutableTree) reapInclusionProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
-	existenceProofs := make([]*ics23.ExistenceProof, 0)
-	for _, key := range keysAccessed {
-		ics23proof, err := tree.GetMembershipProof([]byte(key))
-		if err != nil {
-			return nil, err
-		}
-		existenceProofs = append(existenceProofs, ics23proof.GetExist())
-	}
-	return existenceProofs, nil
 }
 
 func recomputeHash(node *Node) error {

@@ -158,17 +158,16 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		require.NoError(err)
 		require.True(areEqual)
 
-		values := [][]byte{{10}, {20}}
-		for i, subsetKey := range subsetKeys {
-			dst.Set(subsetKey, values[i])
-			dst.SaveVersion()
-			tree.Set(subsetKey, values[i])
-			tree.SaveVersion()
+		tc := testContext{
+			tree: tree,
+			dst:  dst,
 		}
 
-		areEqual, err = haveEqualRoots(dst.MutableTree, tree)
-		require.NoError(err)
-		require.True(areEqual)
+		values := [][]byte{{10}, {20}}
+		for i, subsetKey := range subsetKeys {
+			err := tc.setInDST(subsetKey, values[i])
+			require.Nil(err)
+		}
 	}
 }
 

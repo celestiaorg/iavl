@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/chrispappas/golang-generics-set/set"
+	ics23 "github.com/confio/ics23/go"
 	"github.com/pkg/errors"
 	dbm "github.com/tendermint/tm-db"
 
@@ -39,7 +40,9 @@ type MutableTree struct {
 	ndb                      *nodeDB
 	skipFastStorageUpgrade   bool // If true, the tree will work like no fast storage and always not upgrade fast storage
 
-	mtx sync.Mutex
+	mtx            sync.Mutex
+	tracingEnabled bool
+	witnessData    []WitnessData
 }
 
 // NewMutableTree returns a new tree with the specified cache size and datastore.
@@ -62,7 +65,13 @@ func NewMutableTreeWithOpts(db dbm.DB, cacheSize int, opts *Options, skipFastSto
 		unsavedFastNodeRemovals:  make(map[string]interface{}),
 		ndb:                      ndb,
 		skipFastStorageUpgrade:   skipFastStorageUpgrade,
+		witnessData:              make([]WitnessData, 0),
+		tracingEnabled:           false,
 	}, nil
+}
+
+func (tree *MutableTree) SetTracingEnabled(tracingEnabled bool) {
+	tree.tracingEnabled = tracingEnabled
 }
 
 // IsEmpty returns whether or not the tree has any keys. Only trees that are
@@ -126,11 +135,57 @@ func (tree *MutableTree) prepareOrphansSlice() []*Node {
 	return make([]*Node, 0, tree.Height()+3)
 }
 
+func (tree *MutableTree) reapExistenceProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
+	existenceProofs := make([]*ics23.ExistenceProof, 0)
+	for _, key := range keysAccessed {
+		ics23proof, err := tree.GetMembershipProof([]byte(key))
+		if err != nil {
+			return nil, err
+		}
+		existenceProofs = append(existenceProofs, ics23proof.GetExist())
+	}
+	return existenceProofs, nil
+}
+
 // Set sets a key in the working tree. Nil values are invalid. The given
 // key/value byte slices must not be modified after this call, since they point
 // to slices stored within IAVL. It returns true when an existing value was
 // updated, while false means it was a new key.
 func (tree *MutableTree) Set(key, value []byte) (updated bool, err error) {
+	if !tree.tracingEnabled {
+		return tree.SetOp(key, value)
+	}
+	savedTree := tree.ImmutableTree.clone()
+	_, err = tree.SetOp(key, value)
+
+	if err != nil {
+		return false, err
+	}
+
+	tree.ImmutableTree = savedTree
+	tree.orphans = map[string]int64{}
+
+	keysAccessed := tree.ndb.keysAccessed.Values()
+
+	existenceProofs, err := tree.reapExistenceProofs(keysAccessed)
+	if err != nil {
+		return false, err
+	}
+	tree.witnessData = append(tree.witnessData, WitnessData{
+		Operation: "write",
+		Key:       key,
+		Value:     value,
+		Proofs:    existenceProofs,
+	})
+	return tree.SetOp(key, value)
+}
+
+// SetOp sets a key in the working tree. Nil values are invalid. The given
+// key/value byte slices must not be modified after this call, since they point
+// to slices stored within IAVL. It returns true when an existing value was
+// updated, while false means it was a new key.
+func (tree *MutableTree) SetOp(key, value []byte) (updated bool, err error) {
+	tree.ndb.keysAccessed = make(set.Set[string])
 	var orphaned []*Node
 	orphaned, updated, err = tree.set(key, value)
 	if err != nil {
@@ -146,6 +201,37 @@ func (tree *MutableTree) Set(key, value []byte) (updated bool, err error) {
 // Get returns the value of the specified key if it exists, or nil otherwise.
 // The returned value must not be modified, since it may point to data stored within IAVL.
 func (tree *MutableTree) Get(key []byte) ([]byte, error) {
+	if !tree.tracingEnabled {
+		return tree.GetOp(key)
+	}
+	value, err := tree.GetOp(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if value == nil {
+		return nil, nil
+	}
+
+	keysAccessed := tree.ndb.keysAccessed.Values()
+
+	existenceProofs, err := tree.reapExistenceProofs(keysAccessed)
+	if err != nil {
+		return nil, err
+	}
+	tree.witnessData = append(tree.witnessData, WitnessData{
+		Operation: "read",
+		Key:       key,
+		Proofs:    existenceProofs,
+	})
+	return value, nil
+}
+
+// GetOp returns the value of the specified key if it exists, or nil otherwise.
+// The returned value must not be modified, since it may point to data stored within IAVL.
+func (tree *MutableTree) GetOp(key []byte) ([]byte, error) {
+	tree.ndb.keysAccessed = make(set.Set[string])
+
 	if tree.root == nil {
 		return nil, nil
 	}
@@ -320,6 +406,41 @@ func (tree *MutableTree) recursiveSet(node *Node, key []byte, value []byte, orph
 // Remove removes a key from the working tree. The given key byte slice should not be modified
 // after this call, since it may point to data stored inside IAVL.
 func (tree *MutableTree) Remove(key []byte) ([]byte, bool, error) {
+	if !tree.tracingEnabled {
+		return tree.RemoveOp(key)
+	}
+	ics23proof, err := tree.GetMembershipProof(key)
+	if err != nil {
+		return nil, false, err
+	}
+	savedTree := tree.ImmutableTree.clone()
+	_, _, err = tree.RemoveOp(key)
+	if err != nil {
+		return nil, false, err
+	}
+
+	keysAccessed := tree.ndb.keysAccessed.Values()
+
+	tree.ImmutableTree = savedTree
+	tree.orphans = map[string]int64{}
+
+	existenceProofs, err := tree.reapExistenceProofs(keysAccessed)
+	existenceProofs = append(existenceProofs, ics23proof.GetExist())
+	if err != nil {
+		return nil, false, err
+	}
+	tree.witnessData = append(tree.witnessData, WitnessData{
+		Operation: "delete",
+		Key:       key,
+		Proofs:    existenceProofs,
+	})
+	return tree.RemoveOp(key)
+}
+
+// Remove removes a key from the working tree. The given key byte slice should not be modified
+// after this call, since it may point to data stored inside IAVL.
+func (tree *MutableTree) RemoveOp(key []byte) ([]byte, bool, error) {
+	tree.ndb.keysAccessed = make(set.Set[string])
 	val, orphaned, removed, err := tree.remove(key)
 	if err != nil {
 		return nil, false, err
@@ -828,7 +949,6 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	if version == 1 && tree.ndb.opts.InitialVersion > 0 {
 		version = int64(tree.ndb.opts.InitialVersion)
 	}
-	tree.ndb.keysAccessed = make(set.Set[string])
 	if tree.VersionExists(version) {
 		// If the version already exists, return an error as we're attempting to overwrite.
 		// However, the same hash means idempotent (i.e. no-op).

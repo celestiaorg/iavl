@@ -116,6 +116,8 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		tree, err := getTestTree(5)
 		require.NoError(err)
 
+		tree.SetTracingEnabled(true)
+
 		tree.Set([]byte("e"), []byte{5})
 		tree.Set([]byte("d"), []byte{4})
 		tree.Set([]byte("c"), []byte{3})
@@ -178,6 +180,8 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 		tree, err := getTestTree(5)
 		require.NoError(err)
 
+		tree.SetTracingEnabled(true)
+
 		tree.Set([]byte("b"), []byte{2})
 		tree.Set([]byte("a"), []byte{1})
 
@@ -192,7 +196,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	}
 	rootHash, err := tree.WorkingHash()
 	require.NoError(err)
-	dst := NewDeepSubTree(db.NewMemDB(), 100, true, 0)
+	dst := NewDeepSubTree(db.NewMemDB(), 100, true, tree.version)
 	require.NoError(err)
 	for _, subsetKey := range subsetKeys {
 		ics23proof, err := tree.GetMembershipProof(subsetKey)
@@ -209,52 +213,26 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	valuesToAdd := [][]byte{
 		{3}, {4},
 	}
-	// Add non-existence proofs for keys we expect to add later
-	for i, keyToAdd := range keysToAdd {
-		existenceProofs, err := tree.GetExistenceProofsNeededForSet(keyToAdd, valuesToAdd[i])
-		require.NoError(err)
-		err = dst.AddExistenceProofs(existenceProofs, rootHash)
-		require.NoError(err)
+	tc := testContext{
+		tree: tree,
+		dst:  dst,
 	}
-	dst.SaveVersion()
-
-	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
-	require.NoError(err)
-	require.True(areEqual)
-
 	require.Equal(len(keysToAdd), len(valuesToAdd))
 
 	// Add all the keys we intend to add and check root hashes stay equal
-	for i := range keysToAdd {
-		keyToAdd := keysToAdd[i]
-		valueToAdd := valuesToAdd[i]
-		dst.Set(keyToAdd, valueToAdd)
-		dst.SaveVersion()
-		tree.Set(keyToAdd, valueToAdd)
-		tree.SaveVersion()
-
-		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
-		require.NoError(err)
-		require.True(areEqual)
+	for i, keyToAdd := range keysToAdd {
+		err := tc.setInDST(keyToAdd, valuesToAdd[i])
+		require.Nil(err)
 	}
+
+	require.Equal(len(keysToAdd), len(valuesToAdd))
 
 	// Delete all the keys we added and check root hashes stay equal
 	for i := range keysToAdd {
 		keyToDelete := keysToAdd[i]
 
-		existenceProofs, err := tree.GetExistenceProofsNeededForRemove(keyToDelete)
-		require.NoError(err)
-		err = dst.AddExistenceProofs(existenceProofs, nil)
-		require.NoError(err)
-
-		dst.Remove(keyToDelete)
-		dst.SaveVersion()
-		tree.Remove(keyToDelete)
-		tree.SaveVersion()
-
-		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
-		require.NoError(err)
-		require.True(areEqual)
+		err := tc.removeInDST(keyToDelete)
+		require.Nil(err)
 	}
 }
 
@@ -302,10 +280,15 @@ func (tc *testContext) setInDST(key []byte, value []byte) error {
 		return nil
 	}
 	tree, dst := tc.tree, tc.dst
-	existenceProofs, err := tc.tree.GetExistenceProofsNeededForSet(key, value)
+
+	// Set key-value pair in IAVL tree
+	_, err := tree.Set(key, value)
 	if err != nil {
 		return err
 	}
+	tree.SaveVersion()
+	witnessData := tree.witnessData[len(tree.witnessData)-1]
+	existenceProofs := witnessData.Proofs
 	err = dst.AddExistenceProofs(existenceProofs, nil)
 	if err != nil {
 		return err
@@ -317,10 +300,6 @@ func (tc *testContext) setInDST(key []byte, value []byte) error {
 		return err
 	}
 	dst.SaveVersion()
-
-	// Set key-value pair in IAVL tree
-	tree.Set(key, value)
-	tree.SaveVersion()
 
 	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 	if err != nil {
@@ -337,11 +316,17 @@ func (tc *testContext) removeInDST(key []byte) error {
 		return nil
 	}
 	tree, dst := tc.tree, tc.dst
-	existenceProofs, err := tree.GetExistenceProofsNeededForRemove(key)
+
+	// Set key-value pair in IAVL tree
+	_, _, err := tree.Remove(key)
 	if err != nil {
 		return err
 	}
+	tree.SaveVersion()
+	witnessData := tree.witnessData[len(tree.witnessData)-1]
+	existenceProofs := witnessData.Proofs
 	err = dst.AddExistenceProofs(existenceProofs, nil)
+
 	if err != nil {
 		return err
 	}
@@ -353,9 +338,6 @@ func (tc *testContext) removeInDST(key []byte) error {
 		return fmt.Errorf("Remove: Unable to remove key: %s from DST", string(key))
 	}
 	dst.SaveVersion()
-
-	tree.Remove(key)
-	tree.SaveVersion()
 
 	areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 	if err != nil {
@@ -370,11 +352,12 @@ func (tc *testContext) removeInDST(key []byte) error {
 func FuzzBatchAddReverse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		require := require.New(t)
-		if len(input) < 1000 {
+		if len(input) < 100 {
 			return
 		}
 		tree, err := NewMutableTreeWithOpts(db.NewMemDB(), cacheSize, nil, true)
 		require.NoError(err)
+		tree.SetTracingEnabled(true)
 		dst := NewDeepSubTree(db.NewMemDB(), cacheSize, true, 0)
 		r := bytes.NewReader(input)
 		keys := make(set.Set[string])

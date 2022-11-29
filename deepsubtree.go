@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chrispappas/golang-generics-set/set"
 	ics23 "github.com/confio/ics23/go"
-	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 	dbm "github.com/tendermint/tm-db"
 )
 
@@ -125,19 +123,6 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 	return nil
 }
 
-func convertToExistenceProofs(proofs []crypto.ProofOp) ([]*ics23.ExistenceProof, error) {
-	existenceProofs := make([]*ics23.ExistenceProof, 0)
-	for _, proof := range proofs {
-		proofOp, err := CommitmentOpDecoder(proof)
-		if err != nil {
-			return nil, err
-		}
-		commitmentProof := proofOp.GetProof()
-		existenceProofs = append(existenceProofs, commitmentProof.GetExist())
-	}
-	return existenceProofs, nil
-}
-
 func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value []byte) error {
 	// Verify operation is on top, look at the witness data and add the relevant existence proofs
 	if dst.witnessData != nil && dst.operationCounter < len(dst.witnessData) {
@@ -148,11 +133,8 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 				traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
 			)
 		}
-		existenceProofs, err := convertToExistenceProofs(traceOp.Proofs)
-		if err != nil {
-			return err
-		}
-		err = dst.AddExistenceProofs(existenceProofs, nil)
+		// TODO: Verify proofs against current rootHash
+		err := dst.AddExistenceProofs(traceOp.Proofs, nil)
 		if err != nil {
 			return err
 		}
@@ -414,72 +396,6 @@ func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte,
 		return newNode.hash, newNode, nil, nil
 	}
 	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
-}
-
-func (tree *MutableTree) GetExistenceProofsNeededForSet(key []byte, value []byte) ([]*ics23.ExistenceProof, error) {
-	_, err := tree.Set(key, value)
-
-	if err != nil {
-		return nil, err
-	}
-
-	keysAccessed := tree.ndb.keysAccessed.Values()
-	tree.ndb.keysAccessed = make(set.Set[string])
-
-	tree.Rollback()
-
-	return tree.reapInclusionProofs(keysAccessed)
-}
-
-func (tree *MutableTree) GetExistenceProofsNeededForGet(key []byte) ([]*ics23.ExistenceProof, error) {
-	_, err := tree.Get(key)
-
-	if err != nil {
-		return nil, err
-	}
-
-	keysAccessed := tree.ndb.keysAccessed.Values()
-	tree.ndb.keysAccessed = make(set.Set[string])
-
-	return tree.reapInclusionProofs(keysAccessed)
-}
-
-func (tree *MutableTree) GetExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
-	ics23proof, err := tree.GetMembershipProof(key)
-	if err != nil {
-		return nil, err
-	}
-
-	_, _, err = tree.Remove(key)
-	if err != nil {
-		return nil, err
-	}
-
-	keysAccessed := tree.ndb.keysAccessed.Values()
-	tree.ndb.keysAccessed = make(set.Set[string])
-
-	tree.Rollback()
-
-	keysAccessed = append(keysAccessed, string(key))
-
-	existenceProofs, err := tree.reapInclusionProofs(keysAccessed)
-	if err != nil {
-		return nil, err
-	}
-	existenceProofs = append(existenceProofs, ics23proof.GetExist())
-	return existenceProofs, nil
-}
-
-func (tree *MutableTree) reapInclusionProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
-	existenceProofs := make([]*ics23.ExistenceProof, 0)
-	for _, key := range keysAccessed {
-		ics23proof, err := tree.GetMembershipProof([]byte(key))
-		if err != nil {
-			return nil, err
-		}
-		existenceProofs = append(existenceProofs, ics23proof.GetExist())
-	}
-	return existenceProofs, nil
 }
 
 func recomputeHash(node *Node) error {

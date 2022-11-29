@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/chrispappas/golang-generics-set/set"
 	ics23 "github.com/confio/ics23/go"
 	dbm "github.com/tendermint/tm-db"
 )
@@ -20,15 +21,8 @@ const (
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
-}
-
-// Represents a Non-Existence proof for a Deep Subtree.
-// Includes existence proofs for siblings of nodes in
-// the ICS23 non-existence proof.
-type DSTNonExistenceProof struct {
-	*ics23.NonExistenceProof
-	LeftSiblingProof  *ics23.ExistenceProof
-	RightSiblingProof *ics23.ExistenceProof
+	// witnessData WitnessData
+	// counter     int
 }
 
 // NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
@@ -49,77 +43,6 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 	return &DeepSubTree{MutableTree: mutableTree}
 }
 
-// Constructs a DSTNonExistenceProof using an ICS23 Non-Existence proof
-// and sibling node proofs. Returns the constructed DSTNonExistenceProof.
-func ConvertToDSTNonExistenceProof(
-	tree *MutableTree,
-	nonExistenceProof *ics23.NonExistenceProof,
-) (*DSTNonExistenceProof, error) {
-	dstNonExistenceProof := DSTNonExistenceProof{
-		NonExistenceProof: nonExistenceProof,
-	}
-	if nonExistenceProof.Left != nil {
-		leftSibling, err := tree.GetSiblingNode(nonExistenceProof.Left.Key)
-		if err != nil {
-			return nil, err
-		}
-		dstNonExistenceProof.LeftSiblingProof, err = createExistenceProof(tree.ImmutableTree, leftSibling.key)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if nonExistenceProof.Right != nil {
-		rightSibling, err := tree.GetSiblingNode(nonExistenceProof.Right.Key)
-		if err != nil {
-			return nil, err
-		}
-		dstNonExistenceProof.RightSiblingProof, err = createExistenceProof(tree.ImmutableTree, rightSibling.key)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return &dstNonExistenceProof, nil
-}
-
-// Returns the sibling node of a leaf node with given key
-func (tree *ImmutableTree) GetSiblingNode(key []byte) (*Node, error) {
-	siblingNode, err := tree.recursiveGetSiblingNode(tree.root, key)
-	if err != nil {
-		return nil, err
-	}
-	return siblingNode, nil
-}
-
-// Recursively iterates the tree to return the sibling node of a leaf node with given key
-func (tree *ImmutableTree) recursiveGetSiblingNode(node *Node, key []byte) (*Node, error) {
-	if node == nil || node.isLeaf() {
-		return nil, nil
-	}
-	leftNode, err := node.getLeftNode(tree)
-	if err != nil {
-		return nil, err
-	}
-	rightNode, err := node.getRightNode(tree)
-	if err != nil {
-		return nil, err
-	}
-	if leftNode != nil && leftNode.isLeaf() && bytes.Equal(leftNode.key, key) {
-		return rightNode, nil
-	}
-	if rightNode != nil && rightNode.isLeaf() && bytes.Equal(rightNode.key, key) {
-		return leftNode, nil
-	}
-
-	siblingNode, err := tree.recursiveGetSiblingNode(leftNode, key)
-	if err != nil {
-		return nil, err
-	}
-	if siblingNode != nil {
-		return siblingNode, nil
-	}
-	return tree.recursiveGetSiblingNode(rightNode, key)
-}
-
 func (node *Node) updateInnerNodeKey() {
 	if node.leftNode != nil {
 		node.key = node.leftNode.getHighestKey()
@@ -132,7 +55,7 @@ func (node *Node) updateInnerNodeKey() {
 // Traverses the nodes in the NodeDB that are part of Deep Subtree
 // and links them together using the populated left and right
 // hashes and sets the root to be the node with the given rootHash
-func (dst *DeepSubTree) BuildTree(rootHash []byte) error {
+func (dst *DeepSubTree) buildTree(rootHash []byte) error {
 	workingHash, err := dst.WorkingHash()
 	if err != nil {
 		return err
@@ -186,25 +109,11 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 	if len(node.leftHash) > 0 {
 		if node.leftNode == nil {
 			node.leftNode, _ = dst.ndb.GetNode(node.leftHash)
-		} else if !bytes.Equal(node.leftNode.hash, node.leftHash) {
-			return fmt.Errorf(
-				"for node: %s, leftNode hash: %s and node leftHash: %s do not match",
-				node.hash,
-				node.leftNode.hash,
-				node.leftHash,
-			)
 		}
 	}
 	if len(node.rightHash) > 0 {
 		if node.rightNode == nil {
 			node.rightNode, _ = dst.ndb.GetNode(node.rightHash)
-		} else if !bytes.Equal(node.rightNode.hash, node.rightHash) {
-			return fmt.Errorf(
-				"for node: %s, rightNode hash: %s and node rightHash: %s do not match",
-				node.hash,
-				node.rightNode.hash,
-				node.rightHash,
-			)
 		}
 	}
 	return nil
@@ -218,6 +127,12 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
 	}
 
+	if dst.root == nil {
+		dst.root = NewNode(key, value, dst.version+1)
+		return updated, nil
+	}
+
+	// TODO: verify operation is on top, look at the witness data and add the relevant existence proofs
 	dst.root, updated, err = dst.recursiveSet(dst.root, key, value)
 	if err != nil {
 		return updated, err
@@ -423,6 +338,59 @@ func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte,
 	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
 }
 
+func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte) ([]*ics23.ExistenceProof, error) {
+	_, err := tree.Set(key, value)
+
+	if err != nil {
+		return nil, err
+	}
+
+	keysAccessed := tree.ndb.keysAccessed.Values()
+	tree.ndb.keysAccessed = make(set.Set[string])
+
+	tree.Rollback()
+
+	return tree.reapInclusionProofs(keysAccessed)
+}
+
+func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
+	ics23proof, err := tree.GetMembershipProof(key)
+	if err != nil {
+		return nil, err
+	}
+
+	_, _, err = tree.Remove(key)
+	if err != nil {
+		return nil, err
+	}
+
+	keysAccessed := tree.ndb.keysAccessed.Values()
+	tree.ndb.keysAccessed = make(set.Set[string])
+
+	tree.Rollback()
+
+	keysAccessed = append(keysAccessed, string(key))
+
+	existenceProofs, err := tree.reapInclusionProofs(keysAccessed)
+	if err != nil {
+		return nil, err
+	}
+	existenceProofs = append(existenceProofs, ics23proof.GetExist())
+	return existenceProofs, nil
+}
+
+func (tree *MutableTree) reapInclusionProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
+	existenceProofs := make([]*ics23.ExistenceProof, 0)
+	for _, key := range keysAccessed {
+		ics23proof, err := tree.GetMembershipProof([]byte(key))
+		if err != nil {
+			return nil, err
+		}
+		existenceProofs = append(existenceProofs, ics23proof.GetExist())
+	}
+	return existenceProofs, nil
+}
+
 func recomputeHash(node *Node) error {
 	if node.leftHash == nil && node.leftNode != nil {
 		leftHash, err := node.leftNode._hash()
@@ -522,40 +490,29 @@ func (node *Node) getLowestKey() []byte {
 	return lowestKey
 }
 
-// Adds nodes associated to the given ICS-23 existence proof to the underlying deep subtree
-func (dst *DeepSubTree) AddExistenceProof(existProof *ics23.ExistenceProof) error {
-	err := dst.addExistenceProof(existProof)
+// Adds nodes associated to the given existence proof to the underlying deep subtree
+func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistenceProof, rootHash []byte) error {
+	for _, existenceProof := range existenceProofs {
+		err := dst.addExistenceProof(existenceProof)
+		if err != nil {
+			return err
+		}
+		err = dst.ndb.Commit()
+		if err != nil {
+			return err
+		}
+	}
+	if rootHash == nil {
+		workingHash, err := dst.WorkingHash()
+		if err != nil {
+			return err
+		}
+		rootHash = workingHash
+	}
+
+	err := dst.buildTree(rootHash)
 	if err != nil {
 		return err
-	}
-	return dst.ndb.Commit()
-}
-
-// Adds nodes associated to the given DST non-existence proof to the underlying deep subtree
-func (dst *DeepSubTree) AddNonExistenceProof(nonExistProof *DSTNonExistenceProof) error {
-	if nonExistProof.Left != nil {
-		err := dst.AddExistenceProof(nonExistProof.Left)
-		if err != nil {
-			return err
-		}
-	}
-	if nonExistProof.Right != nil {
-		err := dst.AddExistenceProof(nonExistProof.Right)
-		if err != nil {
-			return err
-		}
-	}
-	if nonExistProof.LeftSiblingProof != nil {
-		err := dst.AddExistenceProof(nonExistProof.LeftSiblingProof)
-		if err != nil {
-			return err
-		}
-	}
-	if nonExistProof.RightSiblingProof != nil {
-		err := dst.AddExistenceProof(nonExistProof.RightSiblingProof)
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }

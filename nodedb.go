@@ -5,19 +5,19 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"math"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-
+	"github.com/chrispappas/golang-generics-set/set"
 	dbm "github.com/cosmos/cosmos-db"
-
 	"github.com/cosmos/iavl/cache"
 	"github.com/cosmos/iavl/fastnode"
 	ibytes "github.com/cosmos/iavl/internal/bytes"
 	"github.com/cosmos/iavl/internal/logger"
 	"github.com/cosmos/iavl/keyformat"
+	"github.com/pkg/errors"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
 )
 
 const (
@@ -81,6 +81,7 @@ type nodeDB struct {
 	latestVersion  int64            // Latest version of nodeDB.
 	nodeCache      cache.Cache      // Cache for nodes in the regular tree that consists of key-value pairs at any version.
 	fastNodeCache  cache.Cache      // Cache for nodes in the fast index that represents only key-value pairs at the latest version.
+	keysAccessed   set.Set[string]
 }
 
 func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
@@ -104,7 +105,14 @@ func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
 		fastNodeCache:  cache.New(fastNodeCacheSize),
 		versionReaders: make(map[int64]uint32, 8),
 		storageVersion: string(storeVersion),
+		keysAccessed:   make(set.Set[string]),
 	}
+}
+
+// Adds the given into a set of keys accessed
+// Note: Used by Deep Subtrees to know which keys to add existence proofs for
+func (ndb *nodeDB) addTrace(key []byte) {
+	ndb.keysAccessed.Add(string(key))
 }
 
 // GetNode gets a node from memory or disk. If it is an inner node, it does not
@@ -124,6 +132,7 @@ func (ndb *nodeDB) unsafeGetNode(hash []byte) (*Node, error) {
 	// Check the cache.
 	if cachedNode := ndb.nodeCache.Get(hash); cachedNode != nil {
 		ndb.opts.Stat.IncCacheHitCnt()
+		ndb.addTrace(cachedNode.(*Node).key)
 		return cachedNode.(*Node), nil
 	}
 
@@ -146,6 +155,7 @@ func (ndb *nodeDB) unsafeGetNode(hash []byte) (*Node, error) {
 	node.hash = hash
 	node.persisted = true
 	ndb.nodeCache.Add(node)
+	ndb.addTrace(node.key)
 
 	return node, nil
 }

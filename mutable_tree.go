@@ -5,14 +5,14 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"sort"
-	"sync"
-
+	"github.com/chrispappas/golang-generics-set/set"
 	dbm "github.com/cosmos/cosmos-db"
-
 	"github.com/cosmos/iavl/fastnode"
 	ibytes "github.com/cosmos/iavl/internal/bytes"
 	"github.com/cosmos/iavl/internal/logger"
+	"github.com/pkg/errors"
+	"sort"
+	"sync"
 )
 
 // commitGap after upgrade/delete commitGap FastNodes when commit the batch
@@ -834,7 +834,7 @@ func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
 	if version == 1 && tree.ndb.opts.InitialVersion > 0 {
 		version = int64(tree.ndb.opts.InitialVersion)
 	}
-
+	tree.ndb.keysAccessed = make(set.Set[string])
 	if tree.VersionExists(version) {
 		// If the version already exists, return an error as we're attempting to overwrite.
 		// However, the same hash means idempotent (i.e. no-op).

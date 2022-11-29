@@ -27,4 +27,5 @@ jobs:
         run: |
           go test ./... -mod=readonly -timeout 5m -short -race -coverprofile=coverage.txt -covermode=atomic
           go test ./... -mod=readonly -timeout 8m
+          go test -fuzz=. -fuzztime=1m
           GOARCH=386 go test ./... -mod=readonly -timeout 8m

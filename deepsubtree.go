@@ -134,8 +134,18 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 				traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
 			)
 		}
-		// TODO: Verify proofs against current rootHash
-		err := dst.AddExistenceProofs(traceOp.Proofs, nil)
+		workingHash, err := dst.WorkingHash()
+		if err != nil {
+			return err
+		}
+		// Verify proofs against current rootHash
+		for _, proof := range traceOp.Proofs {
+			err := proof.Verify(ics23.IavlSpec, workingHash, proof.Key, proof.Value)
+			if err != nil {
+				return err
+			}
+		}
+		err = dst.AddExistenceProofs(traceOp.Proofs, nil)
 		if err != nil {
 			return err
 		}

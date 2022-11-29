@@ -74,6 +74,10 @@ func (tree *MutableTree) SetTracingEnabled(tracingEnabled bool) {
 	tree.tracingEnabled = tracingEnabled
 }
 
+func (tree *MutableTree) GetWitnessData() []WitnessData {
+	return tree.witnessData
+}
+
 // IsEmpty returns whether or not the tree has any keys. Only trees that are
 // not empty can be saved.
 func (tree *MutableTree) IsEmpty() bool {

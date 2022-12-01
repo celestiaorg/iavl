@@ -20,9 +20,9 @@ const (
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
-	initialRootHash  []byte
-	witnessData      []WitnessData
-	operationCounter int
+	initialRootHash  []byte        // Initial Root Hash when Deep Subtree is initialized for an already existing tree
+	witnessData      []WitnessData // Represents a trace operation along with inclusion proofs required for said operation
+	operationCounter int           // Keeps track of which operation in the witness data list the Deep Subtree is on
 }
 
 // NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
@@ -83,7 +83,7 @@ func (dst *DeepSubTree) buildTree(rootHash []byte) error {
 	if !bytes.Equal(workingHash, rootHash) {
 		if dst.root != nil {
 			return fmt.Errorf(
-				"deep Subtree rootHash: %s does not match expected rootHash: %s",
+				"deep subtree rootHash: %s does not match expected rootHash: %s",
 				workingHash,
 				rootHash,
 			)

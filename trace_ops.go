@@ -11,7 +11,7 @@ const (
 )
 
 type (
-	// operation represents an IO operation
+	// operation represents an tree operation
 	Operation string
 )
 

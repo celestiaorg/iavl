@@ -48,8 +48,11 @@ func (dst *DeepSubTree) SetWitnessData(witnessData []WitnessData) {
 	dst.operationCounter = 0
 }
 
-func (dst *DeepSubTree) GetInitialRootHash() []byte {
-	return dst.initialRootHash
+func (dst *DeepSubTree) GetInitialRootHash() ([]byte, error) {
+	if dst.initialRootHash == nil {
+		return dst.WorkingHash()
+	}
+	return dst.initialRootHash, nil
 }
 
 func (dst *DeepSubTree) SetInitialRootHash(initialRootHash []byte) {
@@ -151,15 +154,9 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 			traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
 		)
 	}
-	rootHash := []byte{}
-	if dst.root == nil && dst.initialRootHash != nil {
-		rootHash = dst.initialRootHash
-	} else {
-		workingHash, err := dst.WorkingHash()
-		if err != nil {
-			return err
-		}
-		rootHash = workingHash
+	rootHash, err := dst.GetInitialRootHash()
+	if err != nil {
+		return err
 	}
 
 	// Verify proofs against current rootHash
@@ -169,7 +166,7 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 			return err
 		}
 	}
-	err := dst.AddExistenceProofs(traceOp.Proofs, nil)
+	err = dst.AddExistenceProofs(traceOp.Proofs, nil)
 	if err != nil {
 		return err
 	}

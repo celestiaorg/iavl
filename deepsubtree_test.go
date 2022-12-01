@@ -84,8 +84,9 @@ func TestDeepSubtreeStepByStep(t *testing.T) {
 	rootHash, err := tree.WorkingHash()
 	require.NoError(err)
 
-	dst := NewDeepSubTree(db.NewMemDB(), 100, false, 0)
+	dst := NewDeepSubTree(db.NewMemDB(), 100, false, tree.version)
 	require.NoError(err)
+	dst.SetInitialRootHash(tree.root.hash)
 
 	// insert key/value pairs in tree
 	allkeys := [][]byte{
@@ -142,8 +143,9 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 		tree := getTree()
 		rootHash, err := tree.WorkingHash()
 		require.NoError(err)
-		dst := NewDeepSubTree(db.NewMemDB(), 100, true, 0)
+		dst := NewDeepSubTree(db.NewMemDB(), 100, true, tree.version)
 		require.NoError(err)
+		dst.SetInitialRootHash(tree.root.hash)
 		for _, subsetKey := range subsetKeys {
 			ics23proof, err := tree.GetMembershipProof(subsetKey)
 			require.NoError(err)
@@ -152,7 +154,6 @@ func TestDeepSubtreeWithUpdates(t *testing.T) {
 			}, rootHash)
 			require.NoError(err)
 		}
-		dst.SaveVersion()
 
 		areEqual, err := haveEqualRoots(dst.MutableTree, tree)
 		require.NoError(err)
@@ -197,6 +198,7 @@ func TestDeepSubtreeWWithAddsAndDeletes(t *testing.T) {
 	require.NoError(err)
 	dst := NewDeepSubTree(db.NewMemDB(), 100, true, tree.version)
 	require.NoError(err)
+	dst.SetInitialRootHash(tree.root.hash)
 	for _, subsetKey := range subsetKeys {
 		ics23proof, err := tree.GetMembershipProof(subsetKey)
 		require.NoError(err)

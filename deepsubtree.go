@@ -49,10 +49,10 @@ func (dst *DeepSubTree) SetWitnessData(witnessData []WitnessData) {
 }
 
 func (dst *DeepSubTree) GetInitialRootHash() ([]byte, error) {
-	if dst.initialRootHash == nil {
-		return dst.WorkingHash()
+	if dst.root == nil && dst.initialRootHash != nil {
+		return dst.initialRootHash, nil
 	}
-	return dst.initialRootHash, nil
+	return dst.WorkingHash()
 }
 
 func (dst *DeepSubTree) SetInitialRootHash(initialRootHash []byte) {
@@ -540,15 +540,11 @@ func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistencePro
 			return err
 		}
 	}
-	if rootHash == nil {
-		workingHash, err := dst.WorkingHash()
-		if err != nil {
-			return err
-		}
-		rootHash = workingHash
+	rootHash, err := dst.GetInitialRootHash()
+	if err != nil {
+		return err
 	}
-
-	err := dst.buildTree(rootHash)
+	err = dst.buildTree(rootHash)
 	if err != nil {
 		return err
 	}

@@ -20,6 +20,7 @@ const (
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
+	initialRootHash  []byte
 	witnessData      []WitnessData
 	operationCounter int
 }
@@ -39,12 +40,20 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 		ndb:                      ndb,
 		skipFastStorageUpgrade:   skipFastStorageUpgrade,
 	}
-	return &DeepSubTree{MutableTree: mutableTree, witnessData: nil, operationCounter: 0}
+	return &DeepSubTree{MutableTree: mutableTree, initialRootHash: nil, witnessData: nil, operationCounter: 0}
 }
 
 func (dst *DeepSubTree) SetWitnessData(witnessData []WitnessData) {
 	dst.witnessData = witnessData
 	dst.operationCounter = 0
+}
+
+func (dst *DeepSubTree) GetInitialRootHash() []byte {
+	return dst.initialRootHash
+}
+
+func (dst *DeepSubTree) SetInitialRootHash(initialRootHash []byte) {
+	dst.initialRootHash = initialRootHash
 }
 
 func (node *Node) updateInnerNodeKey() {
@@ -142,18 +151,25 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 			traceOp.Operation, string(traceOp.Key), string(traceOp.Value), string(key), string(value),
 		)
 	}
-	workingHash, err := dst.WorkingHash()
-	if err != nil {
-		return err
+	rootHash := []byte{}
+	if dst.root == nil && dst.initialRootHash != nil {
+		rootHash = dst.initialRootHash
+	} else {
+		workingHash, err := dst.WorkingHash()
+		if err != nil {
+			return err
+		}
+		rootHash = workingHash
 	}
+
 	// Verify proofs against current rootHash
 	for _, proof := range traceOp.Proofs {
-		err := proof.Verify(ics23.IavlSpec, workingHash, proof.Key, proof.Value)
+		err := proof.Verify(ics23.IavlSpec, rootHash, proof.Key, proof.Value)
 		if err != nil {
 			return err
 		}
 	}
-	err = dst.AddExistenceProofs(traceOp.Proofs, nil)
+	err := dst.AddExistenceProofs(traceOp.Proofs, nil)
 	if err != nil {
 		return err
 	}

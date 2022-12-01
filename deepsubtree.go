@@ -139,8 +139,9 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 	return nil
 }
 
-func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value []byte) error {
-	// Verify operation is on top, look at the witness data and add the relevant existence proofs
+// Verifies the given operation matches up with the witness data.
+// Also, verifies and adds existence proofs related to the operation.
+func (dst *DeepSubTree) verifyOperationAndProofs(operation Operation, key []byte, value []byte) error {
 	if dst.witnessData == nil {
 		return errors.New("witness data in deep subtree is nil")
 	}
@@ -180,7 +181,7 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 
 // Verifies the Set operation with witness data and perform the given write operation
 func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
-	err = dst.verifyOperation("write", key, value)
+	err = dst.verifyOperationAndProofs("write", key, value)
 	if err != nil {
 		return false, err
 	}
@@ -291,7 +292,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 
 // Verifies the Get operation with witness data and perform the given read operation
 func (dst *DeepSubTree) Get(key []byte) (value []byte, err error) {
-	err = dst.verifyOperation("read", key, nil)
+	err = dst.verifyOperationAndProofs("read", key, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +311,7 @@ func (dst *DeepSubTree) get(key []byte) ([]byte, error) {
 
 // Verifies the Remove operation with witness data and perform the given delete operation
 func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err error) {
-	err = dst.verifyOperation("delete", key, nil)
+	err = dst.verifyOperationAndProofs("delete", key, nil)
 	if err != nil {
 		return nil, false, err
 	}

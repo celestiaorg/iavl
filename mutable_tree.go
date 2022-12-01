@@ -148,6 +148,7 @@ func (tree *MutableTree) prepareOrphansSlice() []*Node {
 	return make([]*Node, 0, tree.Height()+3)
 }
 
+// Return a list of existences proofs for all keys in the given set
 func (tree *MutableTree) reapExistenceProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
 	existenceProofs := make([]*ics23.ExistenceProof, 0)
 	for _, key := range keysAccessed {
@@ -160,14 +161,14 @@ func (tree *MutableTree) reapExistenceProofs(keysAccessed []string) ([]*ics23.Ex
 	return existenceProofs, nil
 }
 
-// Wrapper around SetOp to add operation related data to the tree's witness data
-// when traicng is enabled
+// Wrapper around setOp to add operation related data to the tree's witness data
+// when tracing is enabled
 func (tree *MutableTree) Set(key, value []byte) (updated bool, err error) {
 	if !tree.tracingEnabled {
-		return tree.SetOp(key, value)
+		return tree.setOp(key, value)
 	}
 	savedTree := tree.ImmutableTree.clone()
-	_, err = tree.SetOp(key, value)
+	_, err = tree.setOp(key, value)
 
 	if err != nil {
 		return false, err
@@ -188,14 +189,14 @@ func (tree *MutableTree) Set(key, value []byte) (updated bool, err error) {
 		Value:     value,
 		Proofs:    existenceProofs,
 	})
-	return tree.SetOp(key, value)
+	return tree.setOp(key, value)
 }
 
-// SetOp sets a key in the working tree. Nil values are invalid. The given
+// setOp sets a key in the working tree. Nil values are invalid. The given
 // key/value byte slices must not be modified after this call, since they point
 // to slices stored within IAVL. It returns true when an existing value was
 // updated, while false means it was a new key.
-func (tree *MutableTree) SetOp(key, value []byte) (updated bool, err error) {
+func (tree *MutableTree) setOp(key, value []byte) (updated bool, err error) {
 	tree.ndb.keysAccessed = make(set.Set[string])
 	var orphaned []*Node
 	orphaned, updated, err = tree.set(key, value)
@@ -212,13 +213,13 @@ func (tree *MutableTree) SetOp(key, value []byte) (updated bool, err error) {
 	return updated, nil
 }
 
-// Wrapper around GetOp to add operation related data to the tree's witness data
-// when traicng is enabled
+// Wrapper around getOp to add operation related data to the tree's witness data
+// when tracing is enabled
 func (tree *MutableTree) Get(key []byte) ([]byte, error) {
 	if !tree.tracingEnabled {
-		return tree.GetOp(key)
+		return tree.getOp(key)
 	}
-	value, err := tree.GetOp(key)
+	value, err := tree.getOp(key)
 	if err != nil {
 		return nil, err
 	}
@@ -237,9 +238,9 @@ func (tree *MutableTree) Get(key []byte) ([]byte, error) {
 	return value, nil
 }
 
-// GetOp returns the value of the specified key if it exists, or nil otherwise.
+// getOp returns the value of the specified key if it exists, or nil otherwise.
 // The returned value must not be modified, since it may point to data stored within IAVL.
-func (tree *MutableTree) GetOp(key []byte) ([]byte, error) {
+func (tree *MutableTree) getOp(key []byte) ([]byte, error) {
 	tree.ndb.keysAccessed = make(set.Set[string])
 
 	if tree.root == nil {
@@ -413,18 +414,18 @@ func (tree *MutableTree) recursiveSet(node *Node, key []byte, value []byte, orph
 	}
 }
 
-// Wrapper around RemoveOp to add operation related data to the tree's witness data
-// when traicng is enabled
+// Wrapper around removeOp to add operation related data to the tree's witness data
+// when tracing is enabled
 func (tree *MutableTree) Remove(key []byte) ([]byte, bool, error) {
 	if !tree.tracingEnabled {
-		return tree.RemoveOp(key)
+		return tree.removeOp(key)
 	}
 	ics23proof, err := tree.GetMembershipProof(key)
 	if err != nil {
 		return nil, false, err
 	}
 	savedTree := tree.ImmutableTree.clone()
-	_, _, err = tree.RemoveOp(key)
+	_, _, err = tree.removeOp(key)
 	if err != nil {
 		return nil, false, err
 	}
@@ -444,12 +445,12 @@ func (tree *MutableTree) Remove(key []byte) ([]byte, bool, error) {
 		Key:       key,
 		Proofs:    existenceProofs,
 	})
-	return tree.RemoveOp(key)
+	return tree.removeOp(key)
 }
 
-// Remove removes a key from the working tree. The given key byte slice should not be modified
+// removeOp removes a key from the working tree. The given key byte slice should not be modified
 // after this call, since it may point to data stored inside IAVL.
-func (tree *MutableTree) RemoveOp(key []byte) ([]byte, bool, error) {
+func (tree *MutableTree) removeOp(key []byte) ([]byte, bool, error) {
 	tree.ndb.keysAccessed = make(set.Set[string])
 	val, orphaned, removed, err := tree.remove(key)
 	if err != nil {

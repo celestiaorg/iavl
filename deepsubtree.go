@@ -28,7 +28,7 @@ type DeepSubTree struct {
 // NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
 func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, version int64) *DeepSubTree {
 	ndb := newNodeDB(db, cacheSize, nil)
-	head := &ImmutableTree{ndb: ndb, version: version}
+	head := &ImmutableTree{ndb: ndb, version: version, skipFastStorageUpgrade: skipFastStorageUpgrade}
 	mutableTree := &MutableTree{
 		ImmutableTree:            head,
 		lastSaved:                head.clone(),
@@ -551,12 +551,26 @@ func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistencePro
 	return nil
 }
 
+func (dst *DeepSubTree) saveNodeIfNeeded(node *Node) error {
+	has, err := dst.ndb.Has(node.hash)
+	if err != nil {
+		return err
+	}
+	if !has {
+		err = dst.ndb.SaveNode(node)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (dst *DeepSubTree) addExistenceProof(proof *ics23.ExistenceProof) error {
 	leaf, err := fromLeafOp(proof.GetLeaf(), proof.Key, proof.Value)
 	if err != nil {
 		return err
 	}
-	err = dst.ndb.SaveNode(leaf)
+	err = dst.saveNodeIfNeeded(leaf)
 	if err != nil {
 		return err
 	}
@@ -569,16 +583,7 @@ func (dst *DeepSubTree) addExistenceProof(proof *ics23.ExistenceProof) error {
 		}
 		prevHash = inner.hash
 
-		has, err := dst.ndb.Has(inner.hash)
-		if err != nil {
-			return err
-		}
-		if !has {
-			err = dst.ndb.SaveNode(inner)
-			if err != nil {
-				return err
-			}
-		}
+		dst.saveNodeIfNeeded(inner)
 	}
 	return nil
 }

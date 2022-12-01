@@ -221,10 +221,6 @@ func (tree *MutableTree) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	if value == nil {
-		return nil, nil
-	}
-
 	keysAccessed := tree.ndb.keysAccessed.Values()
 
 	existenceProofs, err := tree.reapExistenceProofs(keysAccessed)

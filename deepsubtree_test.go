@@ -20,6 +20,7 @@ type op int
 const (
 	Set op = iota
 	Remove
+	Get
 	Noop
 )
 
@@ -253,19 +254,18 @@ type testContext struct {
 }
 
 // Generates random new key half times and an existing key for the other half times.
-func (tc *testContext) getKey(genRandom bool) (key []byte, err error) {
+func (tc *testContext) getKey(genRandom bool, addsNewKey bool) (key []byte, err error) {
 	tree, r, keys := tc.tree, tc.r, tc.keys
 	if genRandom && readByte(r) < math.MaxUint8/2 {
 		k := make([]byte, readByte(r)/2+1)
 		r.Read(k)
-		val, err := tree.Get(k)
+		_, err := tree.Get(k)
 		if err != nil {
 			return nil, err
 		}
-		if val != nil {
-			return nil, nil
+		if addsNewKey {
+			keys.Add(string(k))
 		}
-		keys.Add(string(k))
 		return k, nil
 	}
 	if keys.Len() == 0 {
@@ -345,6 +345,34 @@ func (tc *testContext) removeInDST(key []byte) error {
 	return nil
 }
 
+func (tc *testContext) getInDST(key []byte) error {
+	if key == nil {
+		return nil
+	}
+	tree, dst := tc.tree, tc.dst
+
+	// Set key-value pair in IAVL tree
+	treeValue, err := tree.Get(key)
+	if err != nil {
+		return err
+	}
+	witness := tree.witnessData[len(tree.witnessData)-1]
+	dst.SetWitnessData([]WitnessData{witness})
+
+	if err != nil {
+		return err
+	}
+	dstValue, err := dst.Get(key)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(dstValue, treeValue) {
+		return fmt.Errorf("Get: Values retrieved to get key: %s do not match", string(key))
+	}
+
+	return nil
+}
+
 func FuzzBatchAddReverse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		require := require.New(t)
@@ -357,6 +385,12 @@ func FuzzBatchAddReverse(f *testing.F) {
 		dst := NewDeepSubTree(db.NewMemDB(), cacheSize, true, 0)
 		r := bytes.NewReader(input)
 		keys := make(set.Set[string])
+		tc := testContext{
+			r,
+			tree,
+			dst,
+			keys,
+		}
 		for i := 0; r.Len() != 0; i++ {
 			b, err := r.ReadByte()
 			if err != nil {
@@ -364,17 +398,11 @@ func FuzzBatchAddReverse(f *testing.F) {
 			}
 			op := op(int(b) % int(Noop))
 			require.NoError(err)
-			tc := testContext{
-				r,
-				tree,
-				dst,
-				keys,
-			}
 			switch op {
 			case Set:
-				keyToAdd, err := tc.getKey(true)
+				keyToAdd, err := tc.getKey(true, true)
 				require.NoError(err)
-				// fmt.Printf("%d: Add: %s, %t\n", i, string(keyToAdd), isNewKey)
+				t.Logf("%d: Add: %s\n", i, string(keyToAdd))
 				value := make([]byte, 32)
 				binary.BigEndian.PutUint64(value, uint64(i))
 				err = tc.setInDST(keyToAdd, value)
@@ -382,14 +410,22 @@ func FuzzBatchAddReverse(f *testing.F) {
 					t.Error(err)
 				}
 			case Remove:
-				keyToDelete, err := tc.getKey(false)
+				keyToDelete, err := tc.getKey(false, false)
 				require.NoError(err)
-				// fmt.Printf("%d: Remove: %s\n", i, string(keyToDelete))
+				t.Logf("%d: Remove: %s\n", i, string(keyToDelete))
 				err = tc.removeInDST(keyToDelete)
 				if err != nil {
 					t.Error(err)
 				}
 				keys.Delete(string(keyToDelete))
+			case Get:
+				keyToGet, err := tc.getKey(true, false)
+				require.NoError(err)
+				t.Logf("%d: Get: %s\n", i, string(keyToGet))
+				err = tc.getInDST(keyToGet)
+				if err != nil {
+					t.Error(err)
+				}
 			}
 		}
 		t.Log("Done")

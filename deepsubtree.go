@@ -166,7 +166,7 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 			return err
 		}
 	}
-	err = dst.AddExistenceProofs(traceOp.Proofs, nil)
+	err = dst.AddExistenceProofs(traceOp.Proofs, rootHash)
 	if err != nil {
 		return err
 	}
@@ -540,11 +540,7 @@ func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistencePro
 			return err
 		}
 	}
-	rootHash, err := dst.GetInitialRootHash()
-	if err != nil {
-		return err
-	}
-	err = dst.buildTree(rootHash)
+	err := dst.buildTree(rootHash)
 	if err != nil {
 		return err
 	}

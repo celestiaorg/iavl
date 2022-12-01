@@ -337,7 +337,7 @@ func (tree *MutableTree) recursiveSet(node *Node, key []byte, value []byte, orph
 	newSelf *Node, updated bool, err error,
 ) {
 	version := tree.version + 1
-
+	node.addTrace(tree.ImmutableTree, node.key)
 	if node.isLeaf() {
 		if !tree.skipFastStorageUpgrade {
 			tree.addUnsavedAddition(key, NewFastNode(key, value, version))
@@ -500,7 +500,7 @@ func (tree *MutableTree) remove(key []byte) (value []byte, orphaned []*Node, rem
 // - the orphaned nodes.
 func (tree *MutableTree) recursiveRemove(node *Node, key []byte, orphans *[]*Node) (newHash []byte, newSelf *Node, newKey []byte, newValue []byte, err error) {
 	version := tree.version + 1
-
+	node.addTrace(tree.ImmutableTree, node.key)
 	if node.isLeaf() {
 		if bytes.Equal(key, node.key) {
 			*orphans = append(*orphans, node)

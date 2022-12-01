@@ -204,6 +204,9 @@ func (tree *MutableTree) SetOp(key, value []byte) (updated bool, err error) {
 	if err != nil {
 		return updated, err
 	}
+	if !updated {
+		tree.ndb.keysAccessed.Delete(string(key))
+	}
 	return updated, nil
 }
 

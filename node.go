@@ -467,6 +467,9 @@ func (node *Node) writeBytes(w io.Writer) error {
 
 func (node *Node) getLeftNode(t *ImmutableTree) (*Node, error) {
 	if node.leftNode != nil {
+		if t != nil && t.ndb != nil {
+			t.ndb.addTrace(node.leftNode.key)
+		}
 		return node.leftNode, nil
 	}
 	leftNode, err := t.ndb.GetNode(node.leftHash)
@@ -479,6 +482,9 @@ func (node *Node) getLeftNode(t *ImmutableTree) (*Node, error) {
 
 func (node *Node) getRightNode(t *ImmutableTree) (*Node, error) {
 	if node.rightNode != nil {
+		if t != nil && t.ndb != nil {
+			t.ndb.addTrace(node.rightNode.key)
+		}
 		return node.rightNode, nil
 	}
 	rightNode, err := t.ndb.GetNode(node.rightHash)

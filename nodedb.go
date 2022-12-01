@@ -111,7 +111,9 @@ func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
 // Adds the given into a set of keys accessed
 // Note: Used by Deep Subtrees to know which keys to add existence proofs for
 func (ndb *nodeDB) addTrace(key []byte) {
-	ndb.keysAccessed.Add(string(key))
+	if ndb.keysAccessed != nil {
+		ndb.keysAccessed.Add(string(key))
+	}
 }
 
 // GetNode gets a node from memory or disk. If it is an inner node, it does not

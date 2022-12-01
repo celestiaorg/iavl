@@ -43,11 +43,14 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 	return &DeepSubTree{MutableTree: mutableTree, initialRootHash: nil, witnessData: nil, operationCounter: 0}
 }
 
+// Setter for witness data. Also, resets the operation counter back to 0.
 func (dst *DeepSubTree) SetWitnessData(witnessData []WitnessData) {
 	dst.witnessData = witnessData
 	dst.operationCounter = 0
 }
 
+// Returns the initial root hash if it is initialized and Deep Subtree root is nil.
+// Otherwise, returns the Deep Subtree working hash is considered the initial root hash.
 func (dst *DeepSubTree) GetInitialRootHash() ([]byte, error) {
 	if dst.root == nil && dst.initialRootHash != nil {
 		return dst.initialRootHash, nil
@@ -55,6 +58,7 @@ func (dst *DeepSubTree) GetInitialRootHash() ([]byte, error) {
 	return dst.WorkingHash()
 }
 
+// Setter for initial root hash
 func (dst *DeepSubTree) SetInitialRootHash(initialRootHash []byte) {
 	dst.initialRootHash = initialRootHash
 }
@@ -174,7 +178,7 @@ func (dst *DeepSubTree) verifyOperation(operation Operation, key []byte, value [
 	return nil
 }
 
-// Set sets a key in the working tree with the given value.
+// Verifies the Set operation with witness data and perform the given write operation
 func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
 	err = dst.verifyOperation("write", key, value)
 	if err != nil {
@@ -183,7 +187,7 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 	return dst.set(key, value)
 }
 
-// Set sets a key in the working tree with the given value.
+// Sets a key in the working tree with the given value.
 func (dst *DeepSubTree) set(key []byte, value []byte) (updated bool, err error) {
 	if value == nil {
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
@@ -285,8 +289,7 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	return newNode, updated, err
 }
 
-// Get returns the value of the specified key if it exists, or nil otherwise.
-// The returned value must not be modified, since it may point to data stored within IAVL.
+// Verifies the Get operation with witness data and perform the given read operation
 func (dst *DeepSubTree) Get(key []byte) (value []byte, err error) {
 	err = dst.verifyOperation("read", key, nil)
 	if err != nil {
@@ -305,8 +308,7 @@ func (dst *DeepSubTree) get(key []byte) ([]byte, error) {
 	return dst.ImmutableTree.Get(key)
 }
 
-// Remove tries to remove a key from the tree and if removed, returns its
-// value, and 'true'.
+// Verifies the Remove operation with witness data and perform the given delete operation
 func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err error) {
 	err = dst.verifyOperation("delete", key, nil)
 	if err != nil {

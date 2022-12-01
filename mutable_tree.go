@@ -70,15 +70,19 @@ func NewMutableTreeWithOpts(db dbm.DB, cacheSize int, opts *Options, skipFastSto
 	}, nil
 }
 
+// Sets tracingEnabled to given boolean and also resets any existing witness data
 func (tree *MutableTree) SetTracingEnabled(tracingEnabled bool) {
 	tree.tracingEnabled = tracingEnabled
+	tree.ndb.setTracingEnabled(tracingEnabled)
 	tree.resetWitnessData()
 }
 
+// Resets witness data inside tree
 func (tree *MutableTree) resetWitnessData() {
 	tree.witnessData = make([]WitnessData, 0)
 }
 
+// Getter for witness data
 func (tree *MutableTree) GetWitnessData() []WitnessData {
 	return tree.witnessData
 }
@@ -156,10 +160,8 @@ func (tree *MutableTree) reapExistenceProofs(keysAccessed []string) ([]*ics23.Ex
 	return existenceProofs, nil
 }
 
-// Set sets a key in the working tree. Nil values are invalid. The given
-// key/value byte slices must not be modified after this call, since they point
-// to slices stored within IAVL. It returns true when an existing value was
-// updated, while false means it was a new key.
+// Wrapper around SetOp to add operation related data to the tree's witness data
+// when traicng is enabled
 func (tree *MutableTree) Set(key, value []byte) (updated bool, err error) {
 	if !tree.tracingEnabled {
 		return tree.SetOp(key, value)
@@ -210,8 +212,8 @@ func (tree *MutableTree) SetOp(key, value []byte) (updated bool, err error) {
 	return updated, nil
 }
 
-// Get returns the value of the specified key if it exists, or nil otherwise.
-// The returned value must not be modified, since it may point to data stored within IAVL.
+// Wrapper around GetOp to add operation related data to the tree's witness data
+// when traicng is enabled
 func (tree *MutableTree) Get(key []byte) ([]byte, error) {
 	if !tree.tracingEnabled {
 		return tree.GetOp(key)
@@ -411,8 +413,8 @@ func (tree *MutableTree) recursiveSet(node *Node, key []byte, value []byte, orph
 	}
 }
 
-// Remove removes a key from the working tree. The given key byte slice should not be modified
-// after this call, since it may point to data stored inside IAVL.
+// Wrapper around RemoveOp to add operation related data to the tree's witness data
+// when traicng is enabled
 func (tree *MutableTree) Remove(key []byte) ([]byte, bool, error) {
 	if !tree.tracingEnabled {
 		return tree.RemoveOp(key)

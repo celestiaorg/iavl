@@ -253,7 +253,8 @@ type testContext struct {
 	keys set.Set[string]
 }
 
-// Generates random new key half times and an existing key for the other half times.
+// Returns random new key half times if genRandom is true.
+// Otherwise, returns a randomly picked existing key.
 func (tc *testContext) getKey(genRandom bool, addsNewKey bool) (key []byte, err error) {
 	tree, r, keys := tc.tree, tc.r, tc.keys
 	if genRandom && readByte(r) < math.MaxUint8/2 {
@@ -276,6 +277,8 @@ func (tc *testContext) getKey(genRandom bool, addsNewKey bool) (key []byte, err 
 	return []byte(kString), nil
 }
 
+// Performs the Set operation on full IAVL tree first, gets the witness data generated from
+// the operatio, and uses that witness data to peform the same operation on the Deep Subtree
 func (tc *testContext) setInDST(key []byte, value []byte) error {
 	if key == nil {
 		return nil
@@ -308,6 +311,8 @@ func (tc *testContext) setInDST(key []byte, value []byte) error {
 	return nil
 }
 
+// Performs the Remove operation on full IAVL tree first, gets the witness data generated from
+// the operatio, and uses that witness data to peform the same operation on the Deep Subtree
 func (tc *testContext) removeInDST(key []byte) error {
 	if key == nil {
 		return nil
@@ -345,6 +350,8 @@ func (tc *testContext) removeInDST(key []byte) error {
 	return nil
 }
 
+// Performs the Get operation on full IAVL tree first, gets the witness data generated from
+// the operation, and uses that witness data to peform the same operation on the Deep Subtree
 func (tc *testContext) getInDST(key []byte) error {
 	if key == nil {
 		return nil
@@ -373,6 +380,8 @@ func (tc *testContext) getInDST(key []byte) error {
 	return nil
 }
 
+// Fuzz tests different combinations of Get, Remove, Set operations generated in
+// a random order with keys related to operations chosen randomly
 func FuzzBatchAddReverse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		require := require.New(t)

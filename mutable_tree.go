@@ -72,6 +72,11 @@ func NewMutableTreeWithOpts(db dbm.DB, cacheSize int, opts *Options, skipFastSto
 
 func (tree *MutableTree) SetTracingEnabled(tracingEnabled bool) {
 	tree.tracingEnabled = tracingEnabled
+	tree.resetWitnessData()
+}
+
+func (tree *MutableTree) resetWitnessData() {
+	tree.witnessData = make([]WitnessData, 0)
 }
 
 func (tree *MutableTree) GetWitnessData() []WitnessData {

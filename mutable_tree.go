@@ -150,7 +150,7 @@ func (tree *MutableTree) prepareOrphansSlice() []*Node {
 
 // Return a list of existences proofs for all keys in the given set
 func (tree *MutableTree) reapExistenceProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
-	existenceProofs := make([]*ics23.ExistenceProof, 0)
+	existenceProofs := make([]*ics23.ExistenceProof, 0, len(keysAccessed))
 	for _, key := range keysAccessed {
 		ics23proof, err := tree.GetMembershipProof([]byte(key))
 		if err != nil {

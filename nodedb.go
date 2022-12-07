@@ -80,7 +80,8 @@ type nodeDB struct {
 	latestVersion  int64            // Latest version of nodeDB.
 	nodeCache      cache.Cache      // Cache for nodes in the regular tree that consists of key-value pairs at any version.
 	fastNodeCache  cache.Cache      // Cache for nodes in the fast index that represents only key-value pairs at the latest version.
-	keysAccessed   set.Set[string]
+	keysAccessed   set.Set[string]  // Set of keys accessed so far, used when tracing is enabled
+	tracingEnabled bool
 }
 
 func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
@@ -105,13 +106,22 @@ func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
 		versionReaders: make(map[int64]uint32, 8),
 		storageVersion: string(storeVersion),
 		keysAccessed:   make(set.Set[string]),
+		tracingEnabled: false,
 	}
 }
 
-// Adds the given into a set of keys accessed
+// Adds the given into a set of keys accessed when tracing is enabled
 // Note: Used by Deep Subtrees to know which keys to add existence proofs for
 func (ndb *nodeDB) addTrace(key []byte) {
-	ndb.keysAccessed.Add(string(key))
+	if ndb.tracingEnabled && ndb.keysAccessed != nil {
+		ndb.keysAccessed.Add(string(key))
+	}
+}
+
+// Sets tracingEnabled to given boolean and also resets keysAccessed
+func (ndb *nodeDB) setTracingEnabled(tracingEnabled bool) {
+	ndb.tracingEnabled = tracingEnabled
+	ndb.keysAccessed = make(set.Set[string])
 }
 
 // GetNode gets a node from memory or disk. If it is an inner node, it does not

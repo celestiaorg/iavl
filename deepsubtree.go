@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chrispappas/golang-generics-set/set"
 	ics23 "github.com/confio/ics23/go"
 	dbm "github.com/tendermint/tm-db"
 )
@@ -21,14 +20,15 @@ const (
 // a subset of nodes of an IAVL tree
 type DeepSubTree struct {
 	*MutableTree
-	// witnessData WitnessData
-	// counter     int
+	initialRootHash  []byte        // Initial Root Hash when Deep Subtree is initialized for an already existing tree
+	witnessData      []WitnessData // Represents a trace operation along with inclusion proofs required for said operation
+	operationCounter int           // Keeps track of which operation in the witness data list the Deep Subtree is on
 }
 
 // NewDeepSubTree returns a new deep subtree with the specified cache size, datastore, and version.
 func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, version int64) *DeepSubTree {
 	ndb := newNodeDB(db, cacheSize, nil)
-	head := &ImmutableTree{ndb: ndb, version: version}
+	head := &ImmutableTree{ndb: ndb, version: version, skipFastStorageUpgrade: skipFastStorageUpgrade}
 	mutableTree := &MutableTree{
 		ImmutableTree:            head,
 		lastSaved:                head.clone(),
@@ -40,7 +40,27 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 		ndb:                      ndb,
 		skipFastStorageUpgrade:   skipFastStorageUpgrade,
 	}
-	return &DeepSubTree{MutableTree: mutableTree}
+	return &DeepSubTree{MutableTree: mutableTree, initialRootHash: nil, witnessData: nil, operationCounter: 0}
+}
+
+// Setter for witness data. Also, resets the operation counter back to 0.
+func (dst *DeepSubTree) SetWitnessData(witnessData []WitnessData) {
+	dst.witnessData = witnessData
+	dst.operationCounter = 0
+}
+
+// Returns the initial root hash if it is initialized and Deep Subtree root is nil.
+// Otherwise, returns the Deep Subtree working hash is considered the initial root hash.
+func (dst *DeepSubTree) GetInitialRootHash() ([]byte, error) {
+	if dst.root == nil && dst.initialRootHash != nil {
+		return dst.initialRootHash, nil
+	}
+	return dst.WorkingHash()
+}
+
+// Setter for initial root hash
+func (dst *DeepSubTree) SetInitialRootHash(initialRootHash []byte) {
+	dst.initialRootHash = initialRootHash
 }
 
 func (node *Node) updateInnerNodeKey() {
@@ -63,7 +83,7 @@ func (dst *DeepSubTree) buildTree(rootHash []byte) error {
 	if !bytes.Equal(workingHash, rootHash) {
 		if dst.root != nil {
 			return fmt.Errorf(
-				"deep Subtree rootHash: %s does not match expected rootHash: %s",
+				"deep subtree rootHash: %s does not match expected rootHash: %s",
 				workingHash,
 				rootHash,
 			)
@@ -119,10 +139,58 @@ func (dst *DeepSubTree) linkNode(node *Node) error {
 	return nil
 }
 
-// Set sets a key in the working tree with the given value.
-// Assumption: Node with given key already exists and is a leaf node.
-// Modified version of set taken from mutable_tree.go
+// Verifies the given operation matches up with the witness data.
+// Also, verifies and adds existence proofs related to the operation.
+func (dst *DeepSubTree) verifyOperationAndProofs(operation Operation, key []byte, value []byte) error {
+	if dst.witnessData == nil {
+		return errors.New("witness data in deep subtree is nil")
+	}
+	if dst.operationCounter >= len(dst.witnessData) {
+		return fmt.Errorf(
+			"operation counter in witness data: %d should be less than length of witness data: %d",
+			dst.operationCounter,
+			len(dst.witnessData),
+		)
+	}
+	traceOp := dst.witnessData[dst.operationCounter]
+	if traceOp.Operation != operation || !bytes.Equal(traceOp.Key, key) || !bytes.Equal(traceOp.Value, value) {
+		return fmt.Errorf(
+			"traceOp in witnessData (%s, %s, %s) does not match up with executed operation (%s, %s, %s)",
+			traceOp.Operation, string(traceOp.Key), string(traceOp.Value), 
+			operation, string(key), string(value),
+		)
+	}
+	rootHash, err := dst.GetInitialRootHash()
+	if err != nil {
+		return err
+	}
+
+	// Verify proofs against current rootHash
+	for _, proof := range traceOp.Proofs {
+		err := proof.Verify(ics23.IavlSpec, rootHash, proof.Key, proof.Value)
+		if err != nil {
+			return err
+		}
+	}
+	err = dst.AddExistenceProofs(traceOp.Proofs, rootHash)
+	if err != nil {
+		return err
+	}
+	dst.operationCounter++
+	return nil
+}
+
+// Verifies the Set operation with witness data and perform the given write operation
 func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) {
+	err = dst.verifyOperationAndProofs("write", key, value)
+	if err != nil {
+		return false, err
+	}
+	return dst.set(key, value)
+}
+
+// Sets a key in the working tree with the given value.
+func (dst *DeepSubTree) set(key []byte, value []byte) (updated bool, err error) {
 	if value == nil {
 		return updated, fmt.Errorf("attempt to store nil value at key '%s'", key)
 	}
@@ -132,7 +200,6 @@ func (dst *DeepSubTree) Set(key []byte, value []byte) (updated bool, err error) 
 		return updated, nil
 	}
 
-	// TODO: verify operation is on top, look at the witness data and add the relevant existence proofs
 	dst.root, updated, err = dst.recursiveSet(dst.root, key, value)
 	if err != nil {
 		return updated, err
@@ -224,9 +291,37 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 	return newNode, updated, err
 }
 
-// Remove tries to remove a key from the tree and if removed, returns its
-// value, nodes orphaned and 'true'.
+// Verifies the Get operation with witness data and perform the given read operation
+func (dst *DeepSubTree) Get(key []byte) (value []byte, err error) {
+	err = dst.verifyOperationAndProofs("read", key, nil)
+	if err != nil {
+		return nil, err
+	}
+	return dst.get(key)
+}
+
+// Get returns the value of the specified key if it exists, or nil otherwise.
+// The returned value must not be modified, since it may point to data stored within IAVL.
+func (dst *DeepSubTree) get(key []byte) ([]byte, error) {
+	if dst.root == nil {
+		return nil, nil
+	}
+
+	return dst.ImmutableTree.Get(key)
+}
+
+// Verifies the Remove operation with witness data and perform the given delete operation
 func (dst *DeepSubTree) Remove(key []byte) (value []byte, removed bool, err error) {
+	err = dst.verifyOperationAndProofs("delete", key, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	return dst.remove(key)
+}
+
+// Remove tries to remove a key from the tree and if removed, returns its
+// value, and 'true'.
+func (dst *DeepSubTree) remove(key []byte) (value []byte, removed bool, err error) {
 	if dst.root == nil {
 		return nil, false, nil
 	}
@@ -336,59 +431,6 @@ func (dst *DeepSubTree) recursiveRemove(node *Node, key []byte) (newHash []byte,
 		return newNode.hash, newNode, nil, nil
 	}
 	return nil, nil, nil, fmt.Errorf("node with key: %s not found", key)
-}
-
-func (tree *MutableTree) getExistenceProofsNeededForSet(key []byte, value []byte) ([]*ics23.ExistenceProof, error) {
-	_, err := tree.Set(key, value)
-
-	if err != nil {
-		return nil, err
-	}
-
-	keysAccessed := tree.ndb.keysAccessed.Values()
-	tree.ndb.keysAccessed = make(set.Set[string])
-
-	tree.Rollback()
-
-	return tree.reapInclusionProofs(keysAccessed)
-}
-
-func (tree *MutableTree) getExistenceProofsNeededForRemove(key []byte) ([]*ics23.ExistenceProof, error) {
-	ics23proof, err := tree.GetMembershipProof(key)
-	if err != nil {
-		return nil, err
-	}
-
-	_, _, err = tree.Remove(key)
-	if err != nil {
-		return nil, err
-	}
-
-	keysAccessed := tree.ndb.keysAccessed.Values()
-	tree.ndb.keysAccessed = make(set.Set[string])
-
-	tree.Rollback()
-
-	keysAccessed = append(keysAccessed, string(key))
-
-	existenceProofs, err := tree.reapInclusionProofs(keysAccessed)
-	if err != nil {
-		return nil, err
-	}
-	existenceProofs = append(existenceProofs, ics23proof.GetExist())
-	return existenceProofs, nil
-}
-
-func (tree *MutableTree) reapInclusionProofs(keysAccessed []string) ([]*ics23.ExistenceProof, error) {
-	existenceProofs := make([]*ics23.ExistenceProof, 0)
-	for _, key := range keysAccessed {
-		ics23proof, err := tree.GetMembershipProof([]byte(key))
-		if err != nil {
-			return nil, err
-		}
-		existenceProofs = append(existenceProofs, ics23proof.GetExist())
-	}
-	return existenceProofs, nil
 }
 
 func recomputeHash(node *Node) error {
@@ -502,17 +544,23 @@ func (dst *DeepSubTree) AddExistenceProofs(existenceProofs []*ics23.ExistencePro
 			return err
 		}
 	}
-	if rootHash == nil {
-		workingHash, err := dst.WorkingHash()
-		if err != nil {
-			return err
-		}
-		rootHash = workingHash
-	}
-
 	err := dst.buildTree(rootHash)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func (dst *DeepSubTree) saveNodeIfNeeded(node *Node) error {
+	has, err := dst.ndb.Has(node.hash)
+	if err != nil {
+		return err
+	}
+	if !has {
+		err = dst.ndb.SaveNode(node)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -522,7 +570,7 @@ func (dst *DeepSubTree) addExistenceProof(proof *ics23.ExistenceProof) error {
 	if err != nil {
 		return err
 	}
-	err = dst.ndb.SaveNode(leaf)
+	err = dst.saveNodeIfNeeded(leaf)
 	if err != nil {
 		return err
 	}
@@ -535,16 +583,7 @@ func (dst *DeepSubTree) addExistenceProof(proof *ics23.ExistenceProof) error {
 		}
 		prevHash = inner.hash
 
-		has, err := dst.ndb.Has(inner.hash)
-		if err != nil {
-			return err
-		}
-		if !has {
-			err = dst.ndb.SaveNode(inner)
-			if err != nil {
-				return err
-			}
-		}
+		dst.saveNodeIfNeeded(inner)
 	}
 	return nil
 }

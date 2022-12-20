@@ -9,6 +9,7 @@ import (
 
 	ics23 "github.com/confio/ics23/go"
 	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/iavl/fastnode"
 )
 
 const (
@@ -35,7 +36,7 @@ func NewDeepSubTree(db dbm.DB, cacheSize int, skipFastStorageUpgrade bool, versi
 		orphans:                  map[string]int64{},
 		versions:                 map[int64]bool{},
 		allRootLoaded:            false,
-		unsavedFastNodeAdditions: make(map[string]*FastNode),
+		unsavedFastNodeAdditions: make(map[string]*fastnode.Node),
 		unsavedFastNodeRemovals:  make(map[string]interface{}),
 		ndb:                      ndb,
 		skipFastStorageUpgrade:   skipFastStorageUpgrade,
@@ -156,7 +157,7 @@ func (dst *DeepSubTree) verifyOperationAndProofs(operation Operation, key []byte
 	if traceOp.Operation != operation || !bytes.Equal(traceOp.Key, key) || !bytes.Equal(traceOp.Value, value) {
 		return fmt.Errorf(
 			"traceOp in witnessData (%s, %s, %s) does not match up with executed operation (%s, %s, %s)",
-			traceOp.Operation, string(traceOp.Key), string(traceOp.Value), 
+			traceOp.Operation, string(traceOp.Key), string(traceOp.Value),
 			operation, string(key), string(value),
 		)
 	}
@@ -220,23 +221,23 @@ func (dst *DeepSubTree) recursiveSet(node *Node, key []byte, value []byte) (
 			// Create a new inner node with the left node as a new leaf node with
 			// given key and right node as the existing leaf node
 			return &Node{
-				key:       node.key,
-				height:    1,
-				size:      2,
-				leftNode:  NewNode(key, value, version),
-				rightNode: node,
-				version:   version,
+				key:           node.key,
+				subtreeHeight: 1,
+				size:          2,
+				leftNode:      NewNode(key, value, version),
+				rightNode:     node,
+				version:       version,
 			}, false, nil
 		case 1:
 			// Create a new inner node with the left node as the existing leaf node
 			// and right node as a new leaf node with given key
 			return &Node{
-				key:       key,
-				height:    1,
-				size:      2,
-				leftNode:  node,
-				rightNode: NewNode(key, value, version),
-				version:   version,
+				key:           key,
+				subtreeHeight: 1,
+				size:          2,
+				leftNode:      node,
+				rightNode:     NewNode(key, value, version),
+				version:       version,
 			}, false, nil
 		default:
 			// Key already exists so create a new leaf node with updated value
@@ -480,7 +481,7 @@ func (dst *DeepSubTree) printNodeDeepSubtree(node *Node, indent int) error {
 
 	fmt.Printf("%sh:%X\n", indentPrefix, hash)
 	if node.isLeaf() {
-		fmt.Printf("%s%X:%X (%v)\n", indentPrefix, node.key, node.value, node.height)
+		fmt.Printf("%s%X:%X (%v)\n", indentPrefix, node.key, node.value, node.subtreeHeight)
 	}
 
 	if node.leftNode != nil {
@@ -583,7 +584,10 @@ func (dst *DeepSubTree) addExistenceProof(proof *ics23.ExistenceProof) error {
 		}
 		prevHash = inner.hash
 
-		dst.saveNodeIfNeeded(inner)
+		err = dst.saveNodeIfNeeded(inner)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -692,11 +696,11 @@ func fromInnerOp(iop *ics23.InnerOp, prevHash []byte) (*Node, error) {
 	}
 
 	node := &Node{
-		leftHash:  left,
-		rightHash: right,
-		version:   version,
-		size:      size,
-		height:    int8(height),
+		leftHash:      left,
+		rightHash:     right,
+		version:       version,
+		size:          size,
+		subtreeHeight: int8(height),
 	}
 
 	_, err = node._hash()

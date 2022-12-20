@@ -5,6 +5,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/chrispappas/golang-generics-set/set"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/iavl/cache"
@@ -12,12 +18,6 @@ import (
 	ibytes "github.com/cosmos/iavl/internal/bytes"
 	"github.com/cosmos/iavl/internal/logger"
 	"github.com/cosmos/iavl/keyformat"
-	"github.com/pkg/errors"
-	"math"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 const (

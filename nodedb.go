@@ -71,17 +71,18 @@ var (
 )
 
 type nodeDB struct {
-	mtx            sync.Mutex       // Read/write lock.
-	db             dbm.DB           // Persistent node storage.
-	batch          dbm.Batch        // Batched writing buffer.
-	opts           Options          // Options to customize for pruning/writing
-	versionReaders map[int64]uint32 // Number of active version readers
-	storageVersion string           // Storage version
-	latestVersion  int64            // Latest version of nodeDB.
-	nodeCache      cache.Cache      // Cache for nodes in the regular tree that consists of key-value pairs at any version.
-	fastNodeCache  cache.Cache      // Cache for nodes in the fast index that represents only key-value pairs at the latest version.
-	keysAccessed   set.Set[string]  // Set of keys accessed so far, used when tracing is enabled
-	tracingEnabled bool
+	mtx             sync.Mutex       // Read/write lock.
+	db              dbm.DB           // Persistent node storage.
+	batch           dbm.Batch        // Batched writing buffer.
+	opts            Options          // Options to customize for pruning/writing
+	versionReaders  map[int64]uint32 // Number of active version readers
+	storageVersion  string           // Storage version
+	latestVersion   int64            // Latest version of nodeDB.
+	nodeCache       cache.Cache      // Cache for nodes in the regular tree that consists of key-value pairs at any version.
+	fastNodeCache   cache.Cache      // Cache for nodes in the fast index that represents only key-value pairs at the latest version.
+	keysAccessed    set.Set[string]  // Set of keys accessed so far, used when tracing is enabled
+	heightsAccessed set.Set[int8]    // Set of heights accessed so far, used when tracing is enabled
+	tracingEnabled  bool
 }
 
 func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
@@ -97,24 +98,30 @@ func newNodeDB(db dbm.DB, cacheSize int, opts *Options) *nodeDB {
 	}
 
 	return &nodeDB{
-		db:             db,
-		batch:          db.NewBatch(),
-		opts:           *opts,
-		latestVersion:  0, // initially invalid
-		nodeCache:      cache.New(cacheSize),
-		fastNodeCache:  cache.New(fastNodeCacheSize),
-		versionReaders: make(map[int64]uint32, 8),
-		storageVersion: string(storeVersion),
-		keysAccessed:   make(set.Set[string]),
-		tracingEnabled: false,
+		db:              db,
+		batch:           db.NewBatch(),
+		opts:            *opts,
+		latestVersion:   0, // initially invalid
+		nodeCache:       cache.New(cacheSize),
+		fastNodeCache:   cache.New(fastNodeCacheSize),
+		versionReaders:  make(map[int64]uint32, 8),
+		storageVersion:  string(storeVersion),
+		keysAccessed:    make(set.Set[string]),
+		heightsAccessed: make(set.Set[int8]),
+		tracingEnabled:  false,
 	}
 }
 
 // Adds the given into a set of keys accessed when tracing is enabled
 // Note: Used by Deep Subtrees to know which keys to add existence proofs for
-func (ndb *nodeDB) addTrace(key []byte) {
-	if ndb.tracingEnabled && ndb.keysAccessed != nil {
-		ndb.keysAccessed.Add(string(key))
+func (ndb *nodeDB) addTrace(key []byte, height int8) {
+	if ndb.tracingEnabled {
+		if ndb.keysAccessed != nil {
+			ndb.keysAccessed.Add(string(key))
+		}
+		if ndb.heightsAccessed != nil {
+			ndb.heightsAccessed.Add(height)
+		}
 	}
 }
 
@@ -122,6 +129,7 @@ func (ndb *nodeDB) addTrace(key []byte) {
 func (ndb *nodeDB) setTracingEnabled(tracingEnabled bool) {
 	ndb.tracingEnabled = tracingEnabled
 	ndb.keysAccessed = make(set.Set[string])
+	ndb.heightsAccessed = make(set.Set[int8])
 }
 
 // GetNode gets a node from memory or disk. If it is an inner node, it does not
@@ -141,7 +149,7 @@ func (ndb *nodeDB) unsafeGetNode(hash []byte) (*Node, error) {
 	// Check the cache.
 	if cachedNode := ndb.nodeCache.Get(hash); cachedNode != nil {
 		ndb.opts.Stat.IncCacheHitCnt()
-		ndb.addTrace(cachedNode.(*Node).key)
+		ndb.addTrace(cachedNode.(*Node).key, cachedNode.(*Node).height)
 		return cachedNode.(*Node), nil
 	}
 
@@ -164,7 +172,7 @@ func (ndb *nodeDB) unsafeGetNode(hash []byte) (*Node, error) {
 	node.hash = hash
 	node.persisted = true
 	ndb.nodeCache.Add(node)
-	ndb.addTrace(node.key)
+	ndb.addTrace(node.key, node.height)
 
 	return node, nil
 }

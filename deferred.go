@@ -61,10 +61,10 @@ type deferredRoot struct {
 
 // deferredState is guarded by nodeDB.mtx.
 type deferredState struct {
-	flushed   int64 // latest version on disk
-	nodes     map[string]*Node
-	roots     map[int64]deferredRoot
-	prunes    []int64 // versions still on disk below flushed, oldest first, to be deleted by PruneDeferred
+	flushed int64 // latest version on disk
+	nodes   map[string]*Node
+	roots   map[int64]deferredRoot
+	prunes  []int64 // versions still on disk below flushed, oldest first, to be deleted by PruneDeferred
 }
 
 func newDeferredState(flushed int64) *deferredState {
@@ -621,7 +621,10 @@ func (tree *MutableTree) FlushAndPruneDeferred() error {
 // next version on disk. It is deleteVersion(prev) generalised to a
 // non-adjacent cur: traverseOrphans only relies on every node of cur with
 // version <= prev being part of prev, which holds for any prev < cur.
-func (ndb *nodeDB) deferredDeleteVersion(prev, cur int64, batch interface{ Delete([]byte) error; Set([]byte, []byte) error }) error {
+func (ndb *nodeDB) deferredDeleteVersion(prev, cur int64, batch interface {
+	Delete([]byte) error
+	Set([]byte, []byte) error
+}) error {
 	cache := newRootkeyCache()
 	rootKey, err := cache.getRootKey(ndb, prev)
 	if err != nil && !errors.Is(err, ErrVersionDoesNotExist) {

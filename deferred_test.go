@@ -315,65 +315,23 @@ func TestDeferredPersistenceDisableFlushes(t *testing.T) {
 	require.Equal(t, h, ih)
 }
 
-// Shutdown in the middle of a block: lastSaved is flushed although the working
-// tree is dirty; the working changes are not written.
-func TestDeferredPersistenceFlushIgnoringWorking(t *testing.T) {
-	r := rand.New(rand.NewSource(42))
-	ops := genDeferredOps(r, 60)
-	db := dbm.NewMemDB()
-	up := newDeferredTestTree(t, dbm.NewMemDB(), 0, true)
-	tree := newDeferredTestTree(t, db, 0, true)
+// A dirty working tree (a block in progress) is never flushed: the flush
+// would mix its changes into the orphan bookkeeping of lastSaved.
+func TestDeferredPersistenceRefusesDirtyFlush(t *testing.T) {
+	tree := newDeferredTestTree(t, dbm.NewMemDB(), 0, true)
 	require.NoError(t, tree.SetDeferredPersistence(true))
-	ref := map[string][]byte{}
-	var hash []byte
-	for i := 0; i < 40; i++ {
-		applyDeferredOps(t, up, ops[i], ref)
-		applyDeferredOps(t, tree, ops[i], nil)
-		h, _, err := up.SaveVersion()
-		require.NoError(t, err)
-		hd, _, err := tree.SaveVersion()
-		require.NoError(t, err)
-		require.Equal(t, h, hd)
-		hash = h
-		if i == 9 {
-			require.NoError(t, tree.FlushDeferred())
-		}
-	}
-	// in-flight block: dirty working tree (updates, deletes, inserts)
-	applyDeferredOps(t, tree, ops[40], nil)
-	for k := range ref {
-		_, _, err := tree.Remove([]byte(k))
-		require.NoError(t, err)
-		break
-	}
+	_, err := tree.Set([]byte("a"), []byte("1"))
+	require.NoError(t, err)
+	_, _, err = tree.SaveVersion()
+	require.NoError(t, err)
+	_, err = tree.Set([]byte("b"), []byte("2"))
+	require.NoError(t, err)
 	require.True(t, tree.IsDirty())
 	require.ErrorIs(t, tree.FlushDeferred(), ErrDeferredDirty)
-	require.NoError(t, tree.FlushDeferredIgnoringWorking())
-	latest, err := tree.LatestVersionOnDisk()
-	require.NoError(t, err)
-	require.Equal(t, int64(40), latest)
-
-	re := newDeferredTestTree(t, db, 0, true)
-	require.Equal(t, int64(40), re.Version())
-	h, err := re.Hash()
-	require.NoError(t, err)
-	require.Equal(t, hash, h)
-	requireTreeContent(t, re.ImmutableTree, ref)
-	require.NoError(t, re.DeleteVersionsBefore(40))
-
-	// continue from disk in lockstep with upstream
-	require.NoError(t, re.SetDeferredPersistence(true))
-	for i := 40; i < 60; i++ {
-		applyDeferredOps(t, up, ops[i], ref)
-		applyDeferredOps(t, re, ops[i], nil)
-		h, _, err := up.SaveVersion()
-		require.NoError(t, err)
-		hd, _, err := re.SaveVersion()
-		require.NoError(t, err)
-		require.Equal(t, h, hd, "version %d", i+1)
-	}
-	require.NoError(t, re.FlushDeferred())
-	requireTreeContent(t, re.ImmutableTree, ref)
+	require.True(t, tree.HasUnflushedVersions())
+	tree.Rollback()
+	require.NoError(t, tree.FlushDeferred())
+	require.False(t, tree.HasUnflushedVersions())
 }
 
 // Queries read soft-committed versions while later versions are committed and

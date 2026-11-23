@@ -114,7 +114,10 @@ func (tree *MutableTree) saveVersionSoft() ([]byte, int64, error) {
 // FlushDeferred writes the latest soft-committed version (lastSaved) to disk.
 // It is a no-op when nothing is pending. Older on-disk versions are left in
 // place; use DeleteVersionsBefore after the caller's own metadata is durable.
-// It refuses to run while the working tree is dirty (ErrDeferredDirty).
+// It refuses to run while the working tree is dirty (ErrDeferredDirty). Like
+// every other MutableTree write it must not run concurrently with Set, Remove
+// or SaveVersion; it never modifies nodes that concurrent readers of older
+// versions traverse.
 func (tree *MutableTree) FlushDeferred() error {
 	if tree.unflushed && tree.IsDirty() {
 		return ErrDeferredDirty
@@ -122,26 +125,8 @@ func (tree *MutableTree) FlushDeferred() error {
 	return tree.flushLastSaved()
 }
 
-// FlushDeferredIgnoringWorking writes lastSaved like FlushDeferred but does
-// not look at the working tree, so it also works in the middle of a block
-// (shutdown). Uncommitted working-tree changes are neither written nor
-// discarded. The caller must not soft-commit/flush that working tree
-// afterwards (rootmulti blocks further commits after a shutdown flush):
-// nodes orphaned by those changes that were unpersisted at the time but are
-// persisted by this flush have no orphan record, so committing them later
-// would leak (not corrupt) a few nodes.
-func (tree *MutableTree) FlushDeferredIgnoringWorking() error {
-	return tree.flushLastSaved()
-}
-
-// LatestVersionOnDisk returns the highest version whose root is on disk
-// (independent of the loaded version and of lazy loading).
-func (tree *MutableTree) LatestVersionOnDisk() (int64, error) {
-	return tree.ndb.getLatestVersion()
-}
-
-// flushLastSaved persists lastSaved; only reads lastSaved and pendingOrphans
-// (both only change in saveVersionSoft), never the working tree.
+// flushLastSaved persists lastSaved. The caller guarantees that the working
+// tree equals lastSaved (FlushDeferred).
 func (tree *MutableTree) flushLastSaved() error {
 	if !tree.unflushed {
 		return nil
@@ -192,19 +177,16 @@ func (tree *MutableTree) flushLastSaved() error {
 	tree.versions[version] = true
 	tree.pendingOrphans = map[string]int64{}
 	tree.unflushed = false
-	// Release the in-memory node graph: switch lastSaved (and the working
-	// tree, if it is clean) to a pointer-free copy of the root, whose children
-	// load from the node cache or the DB. Nodes that readers may be traversing
-	// are never mutated (no child-pointer nil-ing as in SaveBranch), so
-	// concurrent queries on older clones stay race-free.
+	// Release the in-memory node graph: switch lastSaved and the (clean)
+	// working tree to a pointer-free copy of the root, whose children load
+	// from the node cache or the DB. Nodes that readers may be traversing are
+	// never mutated (no child-pointer nil-ing as in SaveBranch), so concurrent
+	// queries on older clones stay race-free.
 	if rootCopy != nil {
-		clean := tree.ImmutableTree.root == tree.lastSaved.root
 		fresh := tree.lastSaved.clone()
 		fresh.root = rootCopy
 		tree.lastSaved = fresh
-		if clean {
-			tree.ImmutableTree = fresh.clone()
-		}
+		tree.ImmutableTree = fresh.clone()
 	}
 	tree.mtx.Unlock()
 	return nil

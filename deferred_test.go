@@ -229,6 +229,8 @@ func TestDeferredPruneBusy(t *testing.T) {
 	require.Equal(t, tree.Hash(), re.Hash())
 
 	exp.Close()
+	require.NoError(t, tree.PruneDeferredBelow(3))
+	require.Equal(t, []int{3, 4}, tree.AvailableVersions(), "versions at or above the limit stay")
 	require.NoError(t, tree.PruneDeferred())
 	require.Equal(t, []int{4}, tree.AvailableVersions())
 	require.Equal(t, int(2*tree.ImmutableTree.root.size-1), countNodes(t, db))

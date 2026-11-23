@@ -28,6 +28,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 )
 
@@ -483,11 +484,17 @@ func (tree *MutableTree) FlushDeferred() error {
 // stops with ErrDeferredBusy at a version that has active readers; the rest
 // stay queued for a later call.
 func (tree *MutableTree) PruneDeferred() error {
+	return tree.PruneDeferredBelow(math.MaxInt64)
+}
+
+// PruneDeferredBelow is PruneDeferred limited to the versions below limit;
+// the caller keeps limit (e.g. a snapshot height) and every later version.
+func (tree *MutableTree) PruneDeferredBelow(limit int64) error {
 	ndb := tree.ndb
 	for {
 		ndb.mtx.Lock()
 		d := ndb.deferred
-		if d == nil || len(d.prunes) == 0 {
+		if d == nil || len(d.prunes) == 0 || d.prunes[0] >= limit {
 			ndb.mtx.Unlock()
 			return nil
 		}

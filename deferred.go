@@ -267,6 +267,56 @@ func (tree *MutableTree) loadVersionDeferred(targetVersion int64, pruneHistory b
 	return latest, nil
 }
 
+// finishDeferredQueue deletes the versions a deferred run left queued for
+// pruning, oldest first, each against the next version still on disk, and
+// removes the marker. Versions at or above target are left alone. Stock
+// pruning and deferred loads call it, so a queue left by a shutdown during a
+// snapshot never leaks nodes.
+func (ndb *nodeDB) finishDeferredQueue(target int64) error {
+	bz, err := ndb.db.Get(deferredPruneMarkerKey())
+	if err != nil || bz == nil {
+		return err
+	}
+	queue, next := decodeMarker(bz)
+	end := target
+	if next > 0 && next < end {
+		if has, err := ndb.db.Has(nodeKeyFormat.Key(GetRootKey(next))); err != nil {
+			return err
+		} else if has {
+			end = next
+		}
+	}
+	var chain []int64
+	for _, v := range queue {
+		if v > 0 && v < end && (len(chain) == 0 || v > chain[len(chain)-1]) {
+			chain = append(chain, v)
+		}
+	}
+	batch := ndb.db.NewBatch()
+	defer batch.Close()
+	for i, from := range chain {
+		to := end
+		if i+1 < len(chain) {
+			to = chain[i+1]
+		}
+		if _, err := ndb.GetRoot(from); err == nil {
+			if err := ndb.deferredDeleteVersion(from, to, batch); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, ErrVersionDoesNotExist) {
+			return err
+		}
+	}
+	if err := batch.Delete(deferredPruneMarkerKey()); err != nil {
+		return err
+	}
+	if err := batch.Write(); err != nil {
+		return err
+	}
+	ndb.resetFirstVersion(0)
+	return nil
+}
+
 // checkNoHistory returns ErrDeferredHistory if a version older than both
 // target and the pending deferred prunes is on disk. It does not write.
 func (ndb *nodeDB) checkNoHistory(target int64) error {
@@ -275,7 +325,7 @@ func (ndb *nodeDB) checkNoHistory(target int64) error {
 	if err != nil {
 		return err
 	}
-	if pending := decodePrunes(bz); len(pending) > 0 && pending[0] > 0 && pending[0] < oldest {
+	if pending, _ := decodeMarker(bz); len(pending) > 0 && pending[0] > 0 && pending[0] < oldest {
 		oldest = pending[0]
 	}
 	first, err := ndb.getFirstVersion()
@@ -315,39 +365,8 @@ func (ndb *nodeDB) prepareDeferred(target int64) error {
 		ndb.resetFirstVersion(0)
 	}
 
-	bz, err := ndb.db.Get(deferredPruneMarkerKey())
-	if err != nil {
+	if err := ndb.finishDeferredQueue(target); err != nil {
 		return err
-	}
-	if bz != nil {
-		// Finish the pending prunes, oldest first, each against the next
-		// version still on disk.
-		pending := decodePrunes(bz)
-		batch := ndb.db.NewBatch()
-		defer batch.Close()
-		for i, from := range pending {
-			next := target
-			if i+1 < len(pending) {
-				next = pending[i+1]
-			}
-			if from <= 0 || from >= next || next > target {
-				continue
-			}
-			if _, err := ndb.GetRoot(from); err == nil {
-				if err := ndb.deferredDeleteVersion(from, next, batch); err != nil {
-					return err
-				}
-			} else if !errors.Is(err, ErrVersionDoesNotExist) {
-				return err
-			}
-		}
-		if err := batch.Delete(deferredPruneMarkerKey()); err != nil {
-			return err
-		}
-		if err := batch.Write(); err != nil {
-			return err
-		}
-		ndb.resetFirstVersion(0)
 	}
 
 	if target > 0 {
@@ -427,7 +446,7 @@ func (tree *MutableTree) FlushDeferred() error {
 	err := func() error {
 		if prev > 0 {
 			// Record every version left below the new one before writing it.
-			if err := ndb.batch.Set(deferredPruneMarkerKey(), encodePrunes(append(append([]int64(nil), d.prunes...), prev))); err != nil {
+			if err := ndb.batch.Set(deferredPruneMarkerKey(), encodeMarker(append(append([]int64(nil), d.prunes...), prev), version)); err != nil {
 				return err
 			}
 		}
@@ -509,7 +528,7 @@ func (tree *MutableTree) PruneDeferredBelow(limit int64) error {
 		}
 		ndb.mtx.Unlock()
 
-		if err := ndb.deferredPruneOne(from, next, rest); err != nil {
+		if err := ndb.deferredPruneOne(from, next, rest, d.flushed); err != nil {
 			return err
 		}
 
@@ -520,7 +539,7 @@ func (tree *MutableTree) PruneDeferredBelow(limit int64) error {
 	}
 }
 
-func (ndb *nodeDB) deferredPruneOne(from, next int64, rest []int64) error {
+func (ndb *nodeDB) deferredPruneOne(from, next int64, rest []int64, flushed int64) error {
 	batch := ndb.db.NewBatch()
 	defer batch.Close()
 	if from < next {
@@ -532,7 +551,7 @@ func (ndb *nodeDB) deferredPruneOne(from, next int64, rest []int64) error {
 	if len(rest) == 0 {
 		err = batch.Delete(deferredPruneMarkerKey())
 	} else {
-		err = batch.Set(deferredPruneMarkerKey(), encodePrunes(rest))
+		err = batch.Set(deferredPruneMarkerKey(), encodeMarker(rest, flushed))
 	}
 	if err != nil {
 		return err
@@ -540,26 +559,36 @@ func (ndb *nodeDB) deferredPruneOne(from, next int64, rest []int64) error {
 	return batch.Write()
 }
 
-// encodePrunes encodes the pending prune versions as 8-byte big-endian values.
-func encodePrunes(versions []int64) []byte {
-	bz := make([]byte, 8*len(versions))
-	for i, v := range versions {
-		binary.BigEndian.PutUint64(bz[8*i:], uint64(v)) // nolint:gosec
+// encodeMarker encodes the pending prune queue and the version that follows it
+// on disk: a 0x01 byte, then 8-byte big-endian versions, next last.
+func encodeMarker(queue []int64, next int64) []byte {
+	bz := make([]byte, 1, 1+8*(len(queue)+1))
+	bz[0] = 1
+	for _, v := range append(append([]int64(nil), queue...), next) {
+		bz = binary.BigEndian.AppendUint64(bz, uint64(v)) // nolint:gosec
 	}
 	return bz
 }
 
-func decodePrunes(bz []byte) []int64 {
-	out := make([]int64, 0, len(bz)/8)
-	for i := 0; i+8 <= len(bz); i += 8 {
-		out = append(out, int64(binary.BigEndian.Uint64(bz[i:]))) // nolint:gosec
+// decodeMarker decodes encodeMarker's output, or the older plain list of
+// 8-byte versions (next 0: unknown).
+func decodeMarker(bz []byte) (queue []int64, next int64) {
+	withNext := len(bz)%8 == 1 && bz[0] == 1
+	if withNext {
+		bz = bz[1:]
 	}
-	return out
+	for i := 0; i+8 <= len(bz); i += 8 {
+		queue = append(queue, int64(binary.BigEndian.Uint64(bz[i:]))) // nolint:gosec
+	}
+	if withNext && len(queue) > 0 {
+		next, queue = queue[len(queue)-1], queue[:len(queue)-1]
+	}
+	return queue, next
 }
 
-// EnableDeferred turns deferred persistence on for a loaded tree. It writes
-// nothing and refuses a tree that has any on-disk version besides its latest,
-// so it never deletes history.
+// EnableDeferred turns deferred persistence on for a loaded tree. It refuses
+// a tree that has any on-disk version besides its latest, so it never deletes
+// history; its only write finishes a prune queue an earlier deferred run left.
 func (tree *MutableTree) EnableDeferred() error {
 	ndb := tree.ndb
 	if ndb.isDeferred() {
@@ -579,19 +608,17 @@ func (tree *MutableTree) EnableDeferred() error {
 	if tree.version != latest {
 		return fmt.Errorf("iavl: deferred persistence: tree is at version %d, latest on disk is %d", tree.version, latest)
 	}
+	// A queue left by an earlier deferred run (shutdown during a snapshot) is
+	// finished first; that is the only write.
+	if err := ndb.finishDeferredQueue(latest); err != nil {
+		return err
+	}
 	first, err := ndb.getFirstVersion()
 	if err != nil {
 		return err
 	}
 	if first > 0 && first < latest {
 		return ErrDeferredHistory
-	}
-	bz, err := ndb.db.Get(deferredPruneMarkerKey())
-	if err != nil {
-		return err
-	}
-	if bz != nil {
-		return errors.New("iavl: deferred persistence: an interrupted prune is pending; load with LoadVersionDeferred")
 	}
 	ndb.mtx.Lock()
 	ndb.deferred = newDeferredState(latest)

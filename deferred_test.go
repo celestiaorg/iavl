@@ -305,3 +305,72 @@ func TestEnableDisableDeferred(t *testing.T) {
 	require.NoError(t, tree.DeleteVersionsTo(4))
 	require.Equal(t, []int{5}, tree.AvailableVersions())
 }
+
+// TestDeferredQueueAfterRestart: a prune queue left on disk by a deferred run
+// (shutdown while a reader held a version) is finished by stock pruning
+// without leaking nodes, and EnableDeferred finishes it too.
+func TestDeferredQueueAfterRestart(t *testing.T) {
+	leftover := func(t *testing.T) (dbm.DB, int64) {
+		r := rand.New(rand.NewSource(11))
+		db := dbm.NewMemDB()
+		tree := NewMutableTree(db, 0, false, NewNopLogger())
+		_, err := tree.LoadVersionDeferred(0)
+		require.NoError(t, err)
+		save := func(v int64) {
+			deferredOp(t, tree, r, v)
+			_, _, err := tree.SaveVersion()
+			require.NoError(t, err)
+		}
+		save(1)
+		save(2)
+		require.NoError(t, tree.FlushAndPruneDeferred())
+		it, err := tree.GetImmutable(2)
+		require.NoError(t, err)
+		exp, err := it.Export()
+		require.NoError(t, err)
+		for {
+			if _, err := exp.Next(); err != nil {
+				break
+			}
+		}
+		for v := int64(3); v <= 6; v++ {
+			save(v)
+			if v%2 == 0 {
+				require.NoError(t, tree.FlushDeferred())
+			}
+		}
+		require.ErrorIs(t, tree.PruneDeferred(), ErrDeferredBusy)
+		require.Equal(t, []int{2, 4, 6}, tree.AvailableVersions())
+		exp.Close()
+		return copyDB(t, db), 6 // shutdown: the queue stays on disk
+	}
+
+	t.Run("stock pruning", func(t *testing.T) {
+		db, latest := leftover(t)
+		r := rand.New(rand.NewSource(12))
+		tree := NewMutableTree(db, 0, false, NewNopLogger())
+		_, err := tree.LoadVersion(latest)
+		require.NoError(t, err)
+		for v := latest + 1; v <= latest+20; v++ {
+			deferredOp(t, tree, r, v)
+			_, _, err := tree.SaveVersion()
+			require.NoError(t, err)
+			require.NoError(t, tree.DeleteVersionsTo(v-1))
+		}
+		require.Equal(t, []int{int(latest + 20)}, tree.AvailableVersions())
+		bz, err := db.Get(deferredPruneMarkerKey())
+		require.NoError(t, err)
+		require.Nil(t, bz)
+		require.Equal(t, int(2*tree.ImmutableTree.root.size-1), countNodes(t, db), "no leaked nodes")
+	})
+
+	t.Run("enable", func(t *testing.T) {
+		db, latest := leftover(t)
+		tree := NewMutableTree(db, 0, false, NewNopLogger())
+		_, err := tree.LoadVersion(latest)
+		require.NoError(t, err)
+		require.NoError(t, tree.EnableDeferred())
+		require.Equal(t, []int{int(latest)}, tree.AvailableVersions())
+		require.Equal(t, int(2*tree.ImmutableTree.root.size-1), countNodes(t, db))
+	})
+}

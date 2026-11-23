@@ -710,6 +710,17 @@ func (ndb *nodeDB) DeleteVersionsTo(toVersion int64) error {
 }
 
 func (ndb *nodeDB) deleteVersionsTo(toVersion int64) error {
+	// Versions a deferred run left queued are not contiguous; delete them
+	// against the right successor first (celestia deferred persistence).
+	if !ndb.isDeferred() {
+		latest, err := ndb.getLatestVersion()
+		if err != nil {
+			return err
+		}
+		if err := ndb.finishDeferredQueue(latest); err != nil {
+			return err
+		}
+	}
 	legacyLatestVersion, err := ndb.getLegacyLatestVersion()
 	if err != nil {
 		return err

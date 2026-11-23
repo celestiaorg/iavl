@@ -184,7 +184,8 @@ func TestDeferredCrashRecovery(t *testing.T) {
 // active readers, such as a snapshot exporter.
 func TestDeferredPruneBusy(t *testing.T) {
 	r := rand.New(rand.NewSource(3))
-	tree := NewMutableTree(dbm.NewMemDB(), 0, false, NewNopLogger())
+	db := dbm.NewMemDB()
+	tree := NewMutableTree(db, 0, false, NewNopLogger())
 	_, err := tree.LoadVersionDeferred(0)
 	require.NoError(t, err)
 	for v := int64(1); v <= 2; v++ {
@@ -212,15 +213,52 @@ func TestDeferredPruneBusy(t *testing.T) {
 	require.NoError(t, tree.FlushDeferred())
 	require.ErrorIs(t, tree.PruneDeferred(), ErrDeferredBusy)
 	require.True(t, tree.VersionExists(2))
-	// A flush also refuses while the previous prune is blocked.
+	// Flushes never wait for readers: versions queue up behind the reader.
 	deferredOp(t, tree, r, 4)
 	_, _, err = tree.SaveVersion()
 	require.NoError(t, err)
-	require.ErrorIs(t, tree.FlushDeferred(), ErrDeferredBusy)
+	require.NoError(t, tree.FlushDeferred())
+	require.ErrorIs(t, tree.PruneDeferred(), ErrDeferredBusy)
+	require.Equal(t, []int{2, 3, 4}, tree.AvailableVersions())
+
+	// A kill now leaves the queue in the marker; a load finishes it in order.
+	re := NewMutableTree(copyDB(t, db), 0, false, NewNopLogger())
+	_, err = re.LoadVersionDeferred(4)
+	require.NoError(t, err)
+	require.Equal(t, []int{4}, re.AvailableVersions())
+	require.Equal(t, tree.Hash(), re.Hash())
 
 	exp.Close()
-	require.NoError(t, tree.FlushAndPruneDeferred())
+	require.NoError(t, tree.PruneDeferred())
 	require.Equal(t, []int{4}, tree.AvailableVersions())
+	require.Equal(t, int(2*tree.ImmutableTree.root.size-1), countNodes(t, db))
+	re = NewMutableTree(db, 0, false, NewNopLogger())
+	_, err = re.LoadVersion(4)
+	require.NoError(t, err)
+	require.Equal(t, treeContents(t, tree.ImmutableTree), treeContents(t, re.ImmutableTree))
+}
+
+// TestDeferredKeepHistory: LoadVersionDeferredKeepHistory refuses a tree with
+// older history without writing, and repairs a tree deferred mode left.
+func TestDeferredKeepHistory(t *testing.T) {
+	r := rand.New(rand.NewSource(8))
+	db := dbm.NewMemDB()
+	tree := NewMutableTree(db, 0, false, NewNopLogger())
+	for v := int64(1); v <= 3; v++ {
+		deferredOp(t, tree, r, v)
+		_, _, err := tree.SaveVersion()
+		require.NoError(t, err)
+	}
+	before := dbDigest(t, db)
+	_, err := NewMutableTree(db, 0, false, NewNopLogger()).LoadVersionDeferredKeepHistory(3)
+	require.ErrorIs(t, err, ErrDeferredHistory)
+	require.Equal(t, before, dbDigest(t, db))
+
+	require.NoError(t, tree.DeleteVersionsTo(2))
+	re := NewMutableTree(db, 0, false, NewNopLogger())
+	_, err = re.LoadVersionDeferredKeepHistory(3)
+	require.NoError(t, err)
+	require.True(t, re.IsDeferred())
 }
 
 // TestEnableDisableDeferred: EnableDeferred writes nothing and refuses a tree

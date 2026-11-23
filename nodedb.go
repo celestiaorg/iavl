@@ -93,6 +93,7 @@ type nodeDB struct {
 	pendingFastNodeRemovals  [][]byte         // Fast node keys to remove from cache after batch commit.
 	isCommitting             bool             // Flag to indicate that the nodeDB is committing.
 	chCommitting             chan struct{}    // Channel to signal that the committing is done.
+	deferred                 *deferredState   // celestia: non-nil in deferred-persistence mode (see deferred.go)
 }
 
 func newNodeDB(db dbm.DB, cacheSize int, opts Options, lg Logger) *nodeDB {
@@ -148,6 +149,12 @@ func (ndb *nodeDB) GetNode(nk []byte) (*Node, error) {
 	}
 
 	ndb.opts.Stat.IncCacheMissCnt()
+
+	if ndb.deferred != nil {
+		if node := ndb.deferred.nodes[string(nk)]; node != nil {
+			return node, nil
+		}
+	}
 
 	// Doesn't exist, load.
 	isLegcyNode := len(nk) == hashSize
@@ -240,6 +247,10 @@ func (ndb *nodeDB) SaveNode(node *Node) error {
 
 	if node.nodeKey == nil {
 		return ErrNodeMissingNodeKey
+	}
+
+	if ndb.deferred != nil && ndb.deferred.holdNode(node) {
+		return nil
 	}
 
 	// Save node bytes to db.
@@ -590,6 +601,9 @@ func (ndb *nodeDB) deleteLegacyVersions(legacyLatestVersion int64) error {
 
 // DeleteVersionsFrom permanently deletes all tree versions from the given version upwards.
 func (ndb *nodeDB) DeleteVersionsFrom(fromVersion int64) error {
+	if err := ndb.deferredCheckNoPending(); err != nil {
+		return err
+	}
 	latest, err := ndb.getLatestVersion()
 	if err != nil {
 		return err
@@ -643,6 +657,7 @@ func (ndb *nodeDB) DeleteVersionsFrom(fromVersion int64) error {
 	// NOTICE: we don't touch fast node indexes here, because it'll be rebuilt later because of version mismatch.
 
 	ndb.resetLatestVersion(dumpFromVersion - 1)
+	ndb.deferredResetFlushed()
 
 	return nil
 }
@@ -681,6 +696,9 @@ func (ndb *nodeDB) startPruning() {
 
 // DeleteVersionsTo deletes the oldest versions up to the given version from disk.
 func (ndb *nodeDB) DeleteVersionsTo(toVersion int64) error {
+	if ndb.isDeferred() {
+		return ErrDeferredPruning
+	}
 	if !ndb.opts.AsyncPruning {
 		return ndb.deleteVersionsTo(toVersion)
 	}
@@ -692,6 +710,17 @@ func (ndb *nodeDB) DeleteVersionsTo(toVersion int64) error {
 }
 
 func (ndb *nodeDB) deleteVersionsTo(toVersion int64) error {
+	// Versions a deferred run left queued are not contiguous; delete them
+	// against the right successor first (celestia deferred persistence).
+	if !ndb.isDeferred() {
+		latest, err := ndb.getLatestVersion()
+		if err != nil {
+			return err
+		}
+		if err := ndb.finishDeferredQueue(latest); err != nil {
+			return err
+		}
+	}
 	legacyLatestVersion, err := ndb.getLegacyLatestVersion()
 	if err != nil {
 		return err
@@ -962,6 +991,9 @@ func (ndb *nodeDB) resetLatestVersion(version int64) {
 
 // hasVersion checks if the given version exists.
 func (ndb *nodeDB) hasVersion(version int64) (bool, error) {
+	if has, ok := ndb.deferredHasVersion(version); ok {
+		return has, nil
+	}
 	return ndb.db.Has(nodeKeyFormat.Key(GetRootKey(version)))
 }
 
@@ -972,6 +1004,9 @@ func (ndb *nodeDB) hasLegacyVersion(version int64) (bool, error) {
 
 // GetRoot gets the nodeKey of the root for the specific version.
 func (ndb *nodeDB) GetRoot(version int64) ([]byte, error) {
+	if rk, ok, err := ndb.deferredGetRoot(version); ok {
+		return rk, err
+	}
 	rootKey := GetRootKey(version)
 	val, err := ndb.db.Get(nodeKeyFormat.Key(rootKey))
 	if err != nil {
@@ -1030,6 +1065,9 @@ func (ndb *nodeDB) GetRoot(version int64) ([]byte, error) {
 func (ndb *nodeDB) SaveEmptyRoot(version int64) error {
 	ndb.mtx.Lock()
 	defer ndb.mtx.Unlock()
+	if ndb.deferred != nil && ndb.deferred.holdRoot(version, deferredRootEmpty, nil) {
+		return nil
+	}
 	return ndb.batch.Set(nodeKeyFormat.Key(GetRootKey(version)), []byte{})
 }
 
@@ -1037,6 +1075,9 @@ func (ndb *nodeDB) SaveEmptyRoot(version int64) error {
 func (ndb *nodeDB) SaveRoot(version int64, nk *NodeKey) error {
 	ndb.mtx.Lock()
 	defer ndb.mtx.Unlock()
+	if ndb.deferred != nil && ndb.deferred.holdRoot(version, deferredRootRef, nk.GetKey()) {
+		return nil
+	}
 	return ndb.batch.Set(nodeKeyFormat.Key(GetRootKey(version)), nodeKeyFormat.Key(nk.GetKey()))
 }
 

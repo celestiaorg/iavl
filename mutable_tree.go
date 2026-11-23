@@ -77,6 +77,9 @@ func (tree *MutableTree) GetLatestVersion() (int64, error) {
 
 // VersionExists returns whether or not a version exists.
 func (tree *MutableTree) VersionExists(version int64) bool {
+	if exists, ok := tree.ndb.deferredVersionExists(version); ok {
+		return exists
+	}
 	legacyLatestVersion, err := tree.ndb.getLegacyLatestVersion()
 	if err != nil {
 		return false
@@ -99,6 +102,9 @@ func (tree *MutableTree) VersionExists(version int64) bool {
 
 // AvailableVersions returns all available versions in ascending order
 func (tree *MutableTree) AvailableVersions() []int {
+	if versions, ok := tree.ndb.deferredAvailableVersions(); ok {
+		return versions
+	}
 	firstVersion, err := tree.ndb.getFirstVersion()
 	if err != nil {
 		return nil
@@ -438,6 +444,10 @@ func (tree *MutableTree) Load() (int64, error) {
 
 // Returns the version number of the specific version found
 func (tree *MutableTree) LoadVersion(targetVersion int64) (int64, error) {
+	if err := tree.ndb.deferredCheckNoPending(); err != nil {
+		return 0, err
+	}
+	defer tree.ndb.deferredResetFlushed()
 	firstVersion, err := tree.ndb.getFirstVersion()
 	if err != nil {
 		return 0, err

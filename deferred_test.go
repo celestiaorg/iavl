@@ -197,6 +197,14 @@ func TestDeferredPruneBusy(t *testing.T) {
 	require.NoError(t, err)
 	exp, err := it.Export()
 	require.NoError(t, err)
+	// Drain the export before mutating the tree: the exporter goroutine races
+	// with mutations on shared nodes (upstream). Version 2 stays registered as
+	// read until Close.
+	for {
+		if _, err := exp.Next(); err != nil {
+			break
+		}
+	}
 
 	deferredOp(t, tree, r, 3)
 	_, _, err = tree.SaveVersion()

@@ -38,6 +38,11 @@ type MutableTree struct {
 	ndb                      *nodeDB
 	skipFastStorageUpgrade   bool // If true, the tree will work like no fast storage and always not upgrade fast storage
 
+	// Deferred persistence (see deferred.go). All zero/false in upstream mode.
+	deferred       bool             // SaveVersion soft-commits (no DB writes)
+	unflushed      bool             // lastSaved is a soft-committed version not yet on disk
+	pendingOrphans map[string]int64 // orphans of persisted nodes accumulated over soft commits since the last flush
+
 	mtx sync.Mutex
 }
 
@@ -74,6 +79,11 @@ func (tree *MutableTree) IsEmpty() bool {
 func (tree *MutableTree) VersionExists(version int64) bool {
 	tree.mtx.Lock()
 	defer tree.mtx.Unlock()
+
+	// deferred persistence: the latest soft-committed version exists (in memory).
+	if tree.unflushed && version == tree.lastSaved.version {
+		return true
+	}
 
 	if tree.allRootLoaded {
 		return tree.versions[version]
@@ -465,6 +475,9 @@ func (tree *MutableTree) Load() (int64, error) {
 // performs a no-op. Otherwise, if the root does not exist, an error will be
 // returned.
 func (tree *MutableTree) LazyLoadVersion(targetVersion int64) (int64, error) {
+	if tree.unflushed {
+		return 0, ErrDeferredUnflushed
+	}
 	firstVersion, err := tree.ndb.getFirstVersion()
 	if err != nil {
 		return 0, err
@@ -546,6 +559,9 @@ func (tree *MutableTree) LazyLoadVersion(targetVersion int64) (int64, error) {
 
 // Returns the version number of the latest version found
 func (tree *MutableTree) LoadVersion(targetVersion int64) (int64, error) {
+	if tree.unflushed {
+		return 0, ErrDeferredUnflushed
+	}
 	roots, err := tree.ndb.getRoots()
 	if err != nil {
 		return 0, err
@@ -765,6 +781,14 @@ func (tree *MutableTree) enableFastStorageAndCommit() error {
 // GetImmutable loads an ImmutableTree at a given version for querying. The returned tree is
 // safe for concurrent access, provided the version is not deleted, e.g. via `DeleteVersion()`.
 func (tree *MutableTree) GetImmutable(version int64) (*ImmutableTree, error) {
+	// deferred persistence: serve the latest soft-committed version from memory.
+	tree.mtx.Lock()
+	if t := tree.unflushedImmutableLocked(version); t != nil {
+		tree.mtx.Unlock()
+		return t, nil
+	}
+	tree.mtx.Unlock()
+
 	rootHash, err := tree.ndb.getRoot(version)
 	if err != nil {
 		return nil, err
@@ -853,6 +877,16 @@ func (tree *MutableTree) GetVersioned(key []byte, version int64) ([]byte, error)
 // SaveVersion saves a new tree version to disk, based on the current state of
 // the tree. Returns the hash and new version number.
 func (tree *MutableTree) SaveVersion() ([]byte, int64, error) {
+	// deferred persistence: soft commit; if the mode was switched off while
+	// versions are pending, soft commit + flush == a full upstream save.
+	if tree.deferred || tree.unflushed {
+		hash, version, err := tree.saveVersionSoft()
+		if err == nil && !tree.deferred {
+			err = tree.FlushDeferred()
+		}
+		return hash, version, err
+	}
+
 	version := tree.version + 1
 	if version == 1 && tree.ndb.opts.InitialVersion > 0 {
 		version = int64(tree.ndb.opts.InitialVersion)

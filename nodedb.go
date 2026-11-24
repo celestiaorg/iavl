@@ -568,12 +568,22 @@ func (ndb *nodeDB) deleteLegacyNodes(version int64, nk []byte) error {
 }
 
 // deleteLegacyVersions deletes all legacy versions from disk.
+//
+// celestia: the orphan walk of the last legacy version is best-effort. The
+// flushing batch may have written part of an earlier run (which deletes that
+// version's root node first) before a kill, or an earlier run may have
+// failed; the walk then fails at the start. The orphan-prefix and root-record
+// passes still run, since deleting the root records is what lets a retry
+// succeed; only the nodes the walk would have found leak. All passes are
+// idempotent. The walk error is returned for logging.
 func (ndb *nodeDB) deleteLegacyVersions(legacyLatestVersion int64) error {
 	// Delete the last version for the legacyLastVersion
-	if err := ndb.traverseOrphans(legacyLatestVersion, legacyLatestVersion+1, func(orphan *Node) error {
+	walkErr := ndb.traverseOrphans(legacyLatestVersion, legacyLatestVersion+1, func(orphan *Node) error {
 		return ndb.deleteFromPruning(ndb.legacyNodeKey(orphan.hash))
-	}); err != nil {
-		return err
+	})
+	if walkErr != nil {
+		ndb.logger.Error("deleting the orphans of the last legacy version failed; deleting the legacy records anyway",
+			"version", legacyLatestVersion, "err", walkErr)
 	}
 
 	// Delete orphans for all legacy versions
@@ -597,7 +607,7 @@ func (ndb *nodeDB) deleteLegacyVersions(legacyLatestVersion int64) error {
 		return err
 	}
 
-	return nil
+	return walkErr
 }
 
 // DeleteVersionsFrom permanently deletes all tree versions from the given version upwards.

@@ -197,3 +197,44 @@ func TestCollapseRacesAsyncPruning(t *testing.T) {
 	require.Equal(t, treeContents(t, stock.ImmutableTree), treeContents(t, re.ImmutableTree))
 	require.Equal(t, fmt.Sprint([]int{120}), fmt.Sprint(re.AvailableVersions()))
 }
+
+// TestCollapseAfterPartialLegacyDelete: a kill part-way through deleting the
+// legacy versions (the flushing batch wrote the deletion of the last legacy
+// root node, not of its root record) must not keep the collapse failing.
+func TestCollapseAfterPartialLegacyDelete(t *testing.T) {
+	const legacyVersion = 50
+	dir, err := createLegacyTree(t, "partial", legacyVersion)
+	require.NoError(t, err)
+	db, err := dbm.NewDB("test", dbType, dir)
+	require.NoError(t, err)
+	defer db.Close()
+	tree := NewMutableTree(db, 0, false, NewNopLogger())
+	_, err = tree.LoadVersion(legacyVersion)
+	require.NoError(t, err)
+	_, err = tree.Set([]byte("partial"), []byte("delete")) // a new root at 51
+	require.NoError(t, err)
+	_, _, err = tree.SaveVersion()
+	require.NoError(t, err)
+	twin := NewMutableTree(copyDB(t, db), 0, false, NewNopLogger())
+	_, err = twin.LoadVersion(legacyVersion + 1)
+	require.NoError(t, err)
+
+	// The first deletion the orphan walk of version 50 emits is its root node.
+	rk, err := tree.ndb.GetRoot(legacyVersion)
+	require.NoError(t, err)
+	require.NoError(t, db.Delete(tree.ndb.legacyNodeKey(rk)))
+
+	tree = NewMutableTree(db, 0, false, NewNopLogger())
+	_, err = tree.LoadVersion(legacyVersion + 1)
+	require.NoError(t, err)
+	require.NoError(t, tree.CollapseToLatest())
+	require.Zero(t, countPrefix(t, db, 'r'), "legacy roots")
+	require.Equal(t, []int{legacyVersion + 1}, tree.AvailableVersions())
+	require.NoError(t, tree.EnableDeferred())
+
+	re := NewMutableTree(db, 0, false, NewNopLogger())
+	_, err = re.LoadVersion(legacyVersion + 1)
+	require.NoError(t, err)
+	require.Equal(t, twin.Hash(), re.Hash())
+	require.Equal(t, treeContents(t, twin.ImmutableTree), treeContents(t, re.ImmutableTree))
+}

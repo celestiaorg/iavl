@@ -346,8 +346,9 @@ func (ndb *nodeDB) checkNoHistory(target int64) error {
 // referenceOnly reports whether version first holds nothing of its own: the
 // root of latest is first's root node and no other version lies between
 // them. A state-sync import leaves such a version for a tree that was
-// unchanged at the snapshot height. Like getFirstVersion, it assumes the
-// versions above first are contiguous.
+// unchanged at the snapshot height; a stock tree pruned to its last two
+// versions, the newer unchanged, looks the same. Like getFirstVersion, it
+// assumes the versions above first are contiguous.
 func (ndb *nodeDB) referenceOnly(first, latest int64) (bool, error) {
 	if first <= 0 || first >= latest {
 		return false, nil
@@ -376,6 +377,31 @@ func (ndb *nodeDB) referenceOnly(first, latest int64) (bool, error) {
 		}
 	}
 	return lo == latest, nil
+}
+
+// retireReferenceOnly deletes version first, for which referenceOnly(first,
+// latest) holds, the way stock pruning would: in one batch it drops first's
+// root record and moves the shared root from (first, 1) to (first, 0), which
+// changes no hash. Leaving it would make stock pruning, which assumes
+// contiguous versions, leak it later. It returns ErrDeferredBusy while a
+// reader holds first.
+func (ndb *nodeDB) retireReferenceOnly(first, latest int64) error {
+	ndb.mtx.Lock()
+	busy := ndb.versionReaders[first] > 0
+	ndb.mtx.Unlock()
+	if busy {
+		return ErrDeferredBusy
+	}
+	batch := ndb.db.NewBatch()
+	defer batch.Close()
+	if err := ndb.deferredDeleteVersion(first, latest, batch); err != nil {
+		return err
+	}
+	if err := batch.Write(); err != nil {
+		return err
+	}
+	ndb.resetFirstVersion(latest)
+	return nil
 }
 
 func (ndb *nodeDB) prepareDeferred(target int64) error {
@@ -418,8 +444,11 @@ func (ndb *nodeDB) prepareDeferred(target int64) error {
 		if err != nil {
 			return err
 		}
-		// A version that only holds target's root is not history; leave it.
-		if first > 0 && first < target && !stub {
+		if stub {
+			if err := ndb.retireReferenceOnly(first, target); err != nil {
+				return err
+			}
+		} else if first > 0 && first < target {
 			ndb.logger.Info("deferred persistence: pruning older versions", "first", first, "latest", target)
 			if err := ndb.deleteVersionsTo(target - 1); err != nil {
 				return err
@@ -632,9 +661,11 @@ func decodeMarker(bz []byte) (queue []int64, next int64) {
 }
 
 // EnableDeferred turns deferred persistence on for a loaded tree. It refuses
-// a tree that has any on-disk version besides its latest, other than one that
-// only holds the latest root (see referenceOnly), so it never deletes history;
-// its only write finishes a prune queue an earlier deferred run left.
+// a tree that has any on-disk version besides its latest, so it never deletes
+// history, with one exception: an older version that only holds the latest
+// root (see referenceOnly), whose state is the latest's, is retired as stock
+// pruning would (ErrDeferredBusy while a reader holds it). Its only other write
+// finishes a prune queue an earlier deferred run left.
 func (tree *MutableTree) EnableDeferred() error {
 	ndb := tree.ndb
 	if ndb.isDeferred() {
@@ -670,6 +701,9 @@ func (tree *MutableTree) EnableDeferred() error {
 		}
 		if !stub {
 			return ErrDeferredHistory
+		}
+		if err := ndb.retireReferenceOnly(first, latest); err != nil {
+			return err
 		}
 	}
 	ndb.mtx.Lock()

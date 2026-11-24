@@ -78,6 +78,7 @@ type nodeDB struct {
 
 	mtx                      sync.RWMutex     // Read/write lock.
 	done                     chan struct{}    // Channel to signal that the pruning process is done.
+	pruneMtx                 sync.Mutex       // celestia: serialises deleteVersionsTo runs (async pruning, CollapseToLatest)
 	db                       dbm.DB           // Persistent node storage.
 	batch                    dbm.Batch        // Batched writing buffer.
 	opts                     Options          // Options to customize for pruning/writing
@@ -670,26 +671,34 @@ func (ndb *nodeDB) startPruning() {
 			close(ndb.done)
 			return
 		default:
+			// pruneMtx keeps CollapseToLatest and this loop from deleting
+			// versions at the same time; pruneVersion is read under it so a
+			// target that CollapseToLatest cleared is never acted on.
+			ndb.pruneMtx.Lock()
 			ndb.mtx.Lock()
 			toVersion := ndb.pruneVersion
 			ndb.mtx.Unlock()
 
 			if toVersion == 0 {
+				ndb.pruneMtx.Unlock()
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
-			if err := ndb.deleteVersionsTo(toVersion); err != nil {
+			err := ndb.deleteVersionsTo(toVersion)
+			if err == nil {
+				ndb.mtx.Lock()
+				if ndb.pruneVersion <= toVersion {
+					ndb.pruneVersion = 0
+				}
+				ndb.mtx.Unlock()
+			}
+			ndb.pruneMtx.Unlock()
+			if err != nil {
 				ndb.logger.Error("Error while pruning", "err", err)
 				time.Sleep(1 * time.Second)
 				continue
 			}
-
-			ndb.mtx.Lock()
-			if ndb.pruneVersion <= toVersion {
-				ndb.pruneVersion = 0
-			}
-			ndb.mtx.Unlock()
 		}
 	}
 }
@@ -700,6 +709,8 @@ func (ndb *nodeDB) DeleteVersionsTo(toVersion int64) error {
 		return ErrDeferredPruning
 	}
 	if !ndb.opts.AsyncPruning {
+		ndb.pruneMtx.Lock()
+		defer ndb.pruneMtx.Unlock()
 		return ndb.deleteVersionsTo(toVersion)
 	}
 

@@ -722,3 +722,98 @@ func (ndb *nodeDB) deferredDeleteVersion(prev, cur int64, batch interface {
 	}
 	return nil
 }
+
+// FirstVersion returns the oldest version on disk (a legacy-format one if any
+// is left), or 0 for an empty tree. It does not write.
+func (tree *MutableTree) FirstVersion() (int64, error) {
+	if versions, ok := tree.ndb.deferredAvailableVersions(); ok {
+		if len(versions) == 0 {
+			return 0, nil
+		}
+		return int64(versions[0]), nil
+	}
+	return tree.ndb.getFirstVersion()
+}
+
+// CollapseToLatest deletes every on-disk version below the latest one,
+// legacy-format versions included, so that EnableDeferred can succeed on a
+// tree that an upstream run (or an older binary) left with history. It is
+// for callers that have decided this history may go, e.g. pruning
+// "everything"; it never changes the latest version or any hash.
+//
+// The tree must be at its latest version, which must not be a legacy-format
+// one: deleting the legacy versions needs a newer version to diff against, so
+// a tree loaded at a legacy version can only be collapsed after its first
+// SaveVersion. A pending async prune is dropped and an in-flight one waited
+// for. If a version to delete has active readers it returns an error without
+// writing. On success the tree holds exactly its latest version, verified
+// from disk; otherwise an error is returned and the caller must not assume
+// anything was deleted. A kill part-way leaves the latest version intact,
+// since only nodes unreachable from it are deleted.
+func (tree *MutableTree) CollapseToLatest() error {
+	ndb := tree.ndb
+	if ndb.isDeferred() {
+		return errors.New("iavl: collapse: deferred persistence is enabled")
+	}
+	if ndb.IsCommitting() {
+		return errors.New("iavl: collapse: the tree is committing")
+	}
+
+	ndb.pruneMtx.Lock()
+	defer ndb.pruneMtx.Unlock()
+	ndb.mtx.Lock()
+	ndb.pruneVersion = 0
+	ndb.mtx.Unlock()
+
+	latest, err := ndb.getLatestVersion()
+	if err != nil {
+		return err
+	}
+	if tree.version != latest {
+		return fmt.Errorf("iavl: collapse: tree is at version %d, latest on disk is %d", tree.version, latest)
+	}
+	if latest <= 0 {
+		return nil
+	}
+
+	// Re-read the cached bounds from disk: async pruning forces the legacy
+	// cache to -1 even when deleting the legacy versions failed.
+	ndb.resetFirstVersion(0)
+	ndb.resetLegacyLatestVersion(0)
+	legacyLatest, err := ndb.getLegacyLatestVersion()
+	if err != nil {
+		return err
+	}
+	if legacyLatest >= latest {
+		return fmt.Errorf("%w: the latest version %d is a legacy one; save a version first", ErrDeferredLegacy, latest)
+	}
+	first, err := ndb.getFirstVersion()
+	if err != nil {
+		return err
+	}
+	if first > 0 && first < latest {
+		// deleteVersionsTo checks for readers before it writes anything.
+		if err := ndb.deleteVersionsTo(latest - 1); err != nil {
+			return err
+		}
+		if err := ndb.Commit(); err != nil {
+			return err
+		}
+	}
+
+	ndb.resetFirstVersion(0)
+	ndb.resetLegacyLatestVersion(0)
+	if legacyLatest, err = ndb.getLegacyLatestVersion(); err != nil {
+		return err
+	}
+	if legacyLatest > 0 {
+		return fmt.Errorf("%w: legacy version %d is still on disk after the collapse", ErrDeferredLegacy, legacyLatest)
+	}
+	if first, err = ndb.getFirstVersion(); err != nil {
+		return err
+	}
+	if first != latest {
+		return fmt.Errorf("%w: first version %d, latest %d after the collapse", ErrDeferredHistory, first, latest)
+	}
+	return nil
+}
